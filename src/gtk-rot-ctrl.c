@@ -79,7 +79,7 @@ static GtkWidget *create_plot_widget (GtkRotCtrl *ctrl);
 
 static void store_sats (gpointer key, gpointer value, gpointer user_data);
 
-static void sat_selected_cb (GtkComboBox *satsel, gpointer data);
+static void sat_selected_cb (GtkCellRendererToggle *cell_renderer, gchar *path_str, gpointer user_data);
 static void track_toggle_cb (GtkToggleButton *button, gpointer data);
 static void delay_changed_cb (GtkSpinButton *spin, gpointer data);
 static void toler_changed_cb (GtkSpinButton *spin, gpointer data);
@@ -164,9 +164,16 @@ static void
 static void
         gtk_rot_ctrl_init (GtkRotCtrl *ctrl)
 {
+    ctrl->satsList = NULL;
     ctrl->sats = NULL;
-    ctrl->target = NULL;
-    ctrl->pass = NULL;
+
+    // Tiago's modification
+    ctrl->target.numSatToTrack = 0;
+    ctrl->target.targetList = malloc(sizeof(sat_t*));
+    ctrl->target.passList = malloc(sizeof(pass_t*));
+
+ //   ctrl->target = NULL;
+ //   ctrl->pass = NULL;
     ctrl->qth = NULL;
     ctrl->plot = NULL;
     ctrl->sock = 0;
@@ -227,9 +234,11 @@ GtkWidget *
     
     /* store satellites */
     g_hash_table_foreach (module->satellites, store_sats, widget);
-    
-    GTK_ROT_CTRL (widget)->target = SAT (g_slist_nth_data (GTK_ROT_CTRL (widget)->sats, 0));
-    
+
+    // Tiago's modification
+    GTK_ROT_CTRL (widget)->target.targetList[0] = SAT (g_slist_nth_data (GTK_ROT_CTRL (widget)->sats, 0));
+    GTK_ROT_CTRL (widget)->target.numSatToTrack++;
+
     /* store current time (don't know if real or simulated) */
     GTK_ROT_CTRL (widget)->t = module->tmgCdnum;
     
@@ -237,14 +246,14 @@ GtkWidget *
     GTK_ROT_CTRL (widget)->qth = module->qth;
     
     /* get next pass for target satellite */
-    if (GTK_ROT_CTRL (widget)->target){
-        if (GTK_ROT_CTRL (widget)->target->el > 0.0) {
-            GTK_ROT_CTRL (widget)->pass = get_current_pass (GTK_ROT_CTRL (widget)->target,
+    if (GTK_ROT_CTRL (widget)->target.targetList[0]){
+        if (GTK_ROT_CTRL (widget)->target.targetList[0]->el > 0.0) {
+            GTK_ROT_CTRL (widget)->target.passList[0] =  get_current_pass (GTK_ROT_CTRL (widget)->target.targetList[0],
                                                             GTK_ROT_CTRL (widget)->qth,
                                                             0.0);
         }
         else {
-            GTK_ROT_CTRL (widget)->pass = get_next_pass (GTK_ROT_CTRL (widget)->target,
+            GTK_ROT_CTRL (widget)->target.passList[0] =  get_next_pass (GTK_ROT_CTRL (widget)->target.targetList[0],
                                                          GTK_ROT_CTRL (widget)->qth,
                                                          3.0);
         }
@@ -257,20 +266,20 @@ GtkWidget *
     gdk_rgb_find_color (gtk_widget_get_colormap (widget), &ColGreen);
 
     /* create contents */
-    table = gtk_table_new (2, 3, FALSE);
+    table = gtk_table_new (2, 7, FALSE);
     gtk_table_set_row_spacings (GTK_TABLE (table), 0);
     gtk_table_set_col_spacings (GTK_TABLE (table), 0);
     gtk_container_set_border_width (GTK_CONTAINER (table), 10);
     gtk_table_attach (GTK_TABLE (table), create_az_widgets (GTK_ROT_CTRL (widget)),
-                      0, 1, 0, 1, GTK_FILL, GTK_SHRINK, 0, 0);
+                      5, 6, 0, 1, GTK_FILL, GTK_SHRINK, 0, 0);
     gtk_table_attach (GTK_TABLE (table), create_el_widgets (GTK_ROT_CTRL (widget)),
-                      1, 2, 0, 1, GTK_FILL, GTK_SHRINK, 0, 0);
+                      5, 6, 1, 2, GTK_FILL, GTK_SHRINK, 0, 0);
     gtk_table_attach (GTK_TABLE (table), create_target_widgets (GTK_ROT_CTRL (widget)),
-                      0, 1, 1, 2, GTK_FILL, GTK_SHRINK, 0, 0);
+                      0, 4, 0, 2, GTK_FILL | GTK_EXPAND, GTK_FILL | GTK_EXPAND, 0, 0);
     gtk_table_attach (GTK_TABLE (table), create_conf_widgets (GTK_ROT_CTRL (widget)),
-                      1, 2, 1, 2, GTK_FILL, GTK_SHRINK, 0, 0);
+                      4, 5, 0, 2, GTK_FILL | GTK_EXPAND, GTK_FILL | GTK_EXPAND, 0, 0);
     gtk_table_attach (GTK_TABLE (table), create_plot_widget (GTK_ROT_CTRL (widget)),
-                      2, 3, 0, 2, GTK_FILL | GTK_EXPAND, GTK_FILL | GTK_EXPAND, 0, 0);
+                      6, 7, 0, 2, GTK_FILL | GTK_EXPAND, GTK_FILL | GTK_EXPAND, 0, 0);
 
     gtk_container_add (GTK_CONTAINER (widget), table);
     
@@ -296,44 +305,45 @@ void
     
     ctrl->t = t;
     
-    if (ctrl->target) {
+    // Tiago's modification
+    if (ctrl->target.targetList[0]) {
         /* update target displays */
-        buff = g_strdup_printf (FMTSTR, ctrl->target->az);
+        buff = g_strdup_printf (FMTSTR, ctrl->target.targetList[0]->az);
         gtk_label_set_text (GTK_LABEL (ctrl->AzSat), buff);
         g_free (buff);
-        buff = g_strdup_printf (FMTSTR, ctrl->target->el);
+        buff = g_strdup_printf (FMTSTR, ctrl->target.targetList[0]->el);
         gtk_label_set_text (GTK_LABEL (ctrl->ElSat), buff);
         g_free (buff);
         
         update_count_down (ctrl, t);
 
         /*if the current pass is too far away*/
-        if ((ctrl->pass!=NULL)&& (ctrl->qth!=NULL))
-            if (qth_small_dist(ctrl->qth,ctrl->pass->qth_comp)>1.0){
-                free_pass (ctrl->pass);
-                ctrl->pass=NULL;
-                ctrl->pass = get_pass (ctrl->target, ctrl->qth, t, 3.0);
-                if (ctrl->pass) {
+        if ((ctrl->target.passList[0]!=NULL)&& (ctrl->qth!=NULL))
+            if (qth_small_dist(ctrl->qth,ctrl->target.passList[0]->qth_comp)>1.0){
+                free_pass (ctrl->target.passList[0]);
+                ctrl->target.passList[0]=NULL;
+                ctrl->target.passList[0] = get_pass (ctrl->target.targetList[0], ctrl->qth, t, 3.0);
+                if (ctrl->target.passList[0]) {
                     set_flipped_pass(ctrl);
                     /* update polar plot */
-                    gtk_polar_plot_set_pass (GTK_POLAR_PLOT (ctrl->plot), ctrl->pass);
+                    gtk_polar_plot_set_pass (GTK_POLAR_PLOT (ctrl->plot), ctrl->target.passList[0]);
                 }
             }
         
         /* update next pass if necessary */
-        if (ctrl->pass != NULL) {
+        if (ctrl->target.passList[0] != NULL) {
             /*if we are not in the current pass*/
-            if ((ctrl->pass->aos>t)||(ctrl->pass->los<t)){
+            if ((ctrl->target.passList[0]->aos>t)||(ctrl->target.passList[0]->los<t)){
                 /* the pass may not have met the minimum 
                    elevation, calculate the pass and plot it*/
-                if (ctrl->target->el >= 0.0) {
+                if (ctrl->target.targetList[0]->el >= 0.0) {
                     /*inside an unexpected/unpredicted pass*/
-                    free_pass (ctrl->pass);
-                    ctrl->pass=NULL;
-                    ctrl->pass = get_current_pass (ctrl->target, ctrl->qth, t);
+                    free_pass (ctrl->target.passList[0]);
+                    ctrl->target.passList[0]=NULL;
+                    ctrl->target.passList[0] = get_current_pass (ctrl->target.targetList[0], ctrl->qth, t);
                     set_flipped_pass(ctrl);
-                    gtk_polar_plot_set_pass (GTK_POLAR_PLOT (ctrl->plot), ctrl->pass);
-                } else if ((ctrl->target->aos-ctrl->pass->aos)>(ctrl->delay/secday/1000/4.0)) {
+                    gtk_polar_plot_set_pass (GTK_POLAR_PLOT (ctrl->plot), ctrl->target.passList[0]);
+                } else if ((ctrl->target.targetList[0]->aos-ctrl->target.passList[0]->aos)>(ctrl->delay/secday/1000/4.0)) {
                     /*the target is expected to appear in a new pass 
                       sufficiently later after the current pass says*/
                     
@@ -341,37 +351,37 @@ void
                       fraction of it as a threshold for deciding a new pass*/
                     
                     /*if the next pass is not the one for the target*/
-                    free_pass (ctrl->pass);
-                    ctrl->pass=NULL;
-                    ctrl->pass = get_pass (ctrl->target, ctrl->qth, t, 3.0);
+                    free_pass (ctrl->target.passList[0]);
+                    ctrl->target.passList[0]=NULL;
+                    ctrl->target.passList[0] = get_pass (ctrl->target.targetList[0], ctrl->qth, t, 3.0);
                     set_flipped_pass(ctrl);
                     /* update polar plot */
-                    gtk_polar_plot_set_pass (GTK_POLAR_PLOT (ctrl->plot), ctrl->pass);
+                    gtk_polar_plot_set_pass (GTK_POLAR_PLOT (ctrl->plot), ctrl->target.passList[0]);
                 }
             } else {
                 /* inside a pass and target dropped below the 
                    horizon so look for a new pass */
-                if (ctrl->target->el < 0.0) {
-                    free_pass (ctrl->pass);
-                    ctrl->pass=NULL;
-                    ctrl->pass = get_pass (ctrl->target, ctrl->qth, t, 3.0);
+                if (ctrl->target.targetList[0]->el < 0.0) {
+                    free_pass (ctrl->target.passList[0]);
+                    ctrl->target.passList[0]=NULL;
+                    ctrl->target.passList[0] = get_pass (ctrl->target.targetList[0], ctrl->qth, t, 3.0);
                     set_flipped_pass(ctrl);
                     /* update polar plot */
-                    gtk_polar_plot_set_pass (GTK_POLAR_PLOT (ctrl->plot), ctrl->pass);
+                    gtk_polar_plot_set_pass (GTK_POLAR_PLOT (ctrl->plot), ctrl->target.passList[0]);
                 }
             }
         }
         else {
             /* we don't have any current pass; store the current one */
-            if (ctrl->target->el > 0.0) {
-                ctrl->pass = get_current_pass (ctrl->target, ctrl->qth, t);
+            if (ctrl->target.targetList[0]->el > 0.0) {
+                ctrl->target.passList[0] = get_current_pass (ctrl->target.targetList[0], ctrl->qth, t);
             }
             else {
-                ctrl->pass = get_pass (ctrl->target, ctrl->qth, t, 3.0);
+                ctrl->target.passList[0] = get_pass (ctrl->target.targetList[0], ctrl->qth, t, 3.0);
             }
             set_flipped_pass(ctrl);
             /* update polar plot */
-            gtk_polar_plot_set_pass (GTK_POLAR_PLOT (ctrl->plot), ctrl->pass);
+            gtk_polar_plot_set_pass (GTK_POLAR_PLOT (ctrl->plot), ctrl->target.passList[0]);
         }
     }
 }
@@ -461,6 +471,10 @@ static
         GtkWidget *create_target_widgets (GtkRotCtrl *ctrl)
 {
     GtkWidget *frame,*table,*label,*satsel,*track;
+    GtkTreeViewColumn *sat_nickname, *checkbox;
+    GtkCellRenderer *rend_sat_nickname, *rend_checkbox;
+    GtkWidget *tree;
+    GtkTreeIter iter;
     gchar *buff;
     guint i, n;
     sat_t *sat = NULL;
@@ -468,59 +482,78 @@ static
 
     buff = g_strdup_printf (FMTSTR, 0.0);
     
-    table = gtk_table_new (4, 3, FALSE);
+    table = gtk_table_new (6, 5, FALSE);
     gtk_container_set_border_width (GTK_CONTAINER (table), 5);
     gtk_table_set_col_spacings (GTK_TABLE (table), 5);
     gtk_table_set_row_spacings (GTK_TABLE (table), 5);
 
     /* sat selector */
-    satsel = gtk_combo_box_new_text ();
+    ctrl->satsList =  gtk_list_store_new(N_COLUMN, G_TYPE_STRING, G_TYPE_BOOLEAN);
+    // set elements to store in the list
     n = g_slist_length (ctrl->sats);
     for (i = 0; i < n; i++) {
         sat = SAT (g_slist_nth_data (ctrl->sats, i));
         if (sat) {
-            gtk_combo_box_append_text (GTK_COMBO_BOX (satsel), sat->nickname);
+            gtk_list_store_append(ctrl->satsList, &iter);
+            gtk_list_store_set(ctrl->satsList, &iter, TEXT_COLUMN, sat->nickname, TOGGLE_COLUMN, FALSE, -1);
         }
     }
-    gtk_combo_box_set_active (GTK_COMBO_BOX (satsel), 0);
-    gtk_widget_set_tooltip_text (satsel, _("Select target object"));
-    g_signal_connect (satsel, "changed", G_CALLBACK (sat_selected_cb), ctrl);
-    gtk_table_attach_defaults (GTK_TABLE (table), satsel, 0, 2, 0, 1);
+    tree = gtk_tree_view_new_with_model(GTK_TREE_MODEL(ctrl->satsList));
+    // Create render
+    rend_sat_nickname = gtk_cell_renderer_text_new();
+    rend_checkbox = gtk_cell_renderer_toggle_new();
+    // Set the column view
+    sat_nickname = gtk_tree_view_column_new_with_attributes("Select target object", rend_sat_nickname, "text", TEXT_COLUMN, NULL);
+    checkbox = gtk_tree_view_column_new_with_attributes("Select target object", rend_checkbox, "active", TOGGLE_COLUMN, NULL);
+    // Appends the columns
+    gtk_tree_view_append_column(GTK_TREE_VIEW(tree), sat_nickname);
+    gtk_tree_view_append_column(GTK_TREE_VIEW(tree), checkbox);
+    gtk_tree_view_column_set_clickable(checkbox,"clickable");
+    // Sets the viewmode
+    gtk_tree_view_set_model(GTK_TREE_VIEW(tree), GTK_TREE_MODEL(ctrl->satsList));
+    // Creates a scrolling window 
+    satsel = gtk_scrolled_window_new(NULL, NULL);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(satsel), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+    gtk_container_add(GTK_CONTAINER(satsel), tree);
+    gtk_table_attach_defaults(GTK_TABLE (table), satsel, 0, 3, 0, 6);
+    // Callback function
+    g_signal_connect (rend_checkbox, "toggled", G_CALLBACK (sat_selected_cb), ctrl);
+
     
     /* tracking button */
     track = gtk_toggle_button_new_with_label (_("Track"));
     gtk_widget_set_tooltip_text (track, _("Track the satellite when it is within range"));
-    gtk_table_attach_defaults (GTK_TABLE (table), track, 2, 3, 0, 1);
+    gtk_table_attach_defaults (GTK_TABLE (table), track, 3, 5, 0, 1);
     g_signal_connect (track, "toggled", G_CALLBACK (track_toggle_cb), ctrl);
     
     /* Azimuth */
     label = gtk_label_new (_("Az:"));
     gtk_misc_set_alignment (GTK_MISC (label), 1.0, 0.5);
-    gtk_table_attach_defaults (GTK_TABLE (table), label, 0, 1, 1, 2);
+    gtk_table_attach_defaults (GTK_TABLE (table), label, 4, 5, 1, 2);
     
     ctrl->AzSat = gtk_label_new (buff);
     gtk_misc_set_alignment (GTK_MISC (ctrl->AzSat), 1.0, 0.5);
-    gtk_table_attach_defaults (GTK_TABLE (table), ctrl->AzSat, 1, 2, 1, 2);
+    gtk_table_attach_defaults (GTK_TABLE (table), ctrl->AzSat, 3, 4, 1, 2);
     
     
     /* Elevation */
     label = gtk_label_new (_("El:"));
     gtk_misc_set_alignment (GTK_MISC (label), 1.0, 0.5);
-    gtk_table_attach_defaults (GTK_TABLE (table), label, 0, 1, 2, 3);
+    gtk_table_attach_defaults (GTK_TABLE (table), label, 3, 5, 2, 3);
     
     ctrl->ElSat = gtk_label_new (buff);
     gtk_misc_set_alignment (GTK_MISC (ctrl->ElSat), 1.0, 0.5);
-    gtk_table_attach_defaults (GTK_TABLE (table), ctrl->ElSat, 1, 2, 2, 3);
+    gtk_table_attach_defaults (GTK_TABLE (table), ctrl->ElSat, 3, 4, 2, 3);
     
     /* count down */
     label = gtk_label_new (_("\316\224T:"));
     gtk_misc_set_alignment (GTK_MISC (label), 1.0, 0.5);
-    gtk_table_attach_defaults (GTK_TABLE (table), label, 0, 1, 3, 4);
+    gtk_table_attach_defaults (GTK_TABLE (table), label, 3, 5, 3, 4);
     ctrl->SatCnt = gtk_label_new ("00:00:00");
     gtk_misc_set_alignment (GTK_MISC (ctrl->SatCnt), 1.0, 0.5);
-    gtk_table_attach_defaults (GTK_TABLE (table), ctrl->SatCnt, 1, 2, 3, 4);
+    gtk_table_attach_defaults (GTK_TABLE (table), ctrl->SatCnt, 3, 4, 3, 4);
     
-    frame = gtk_frame_new (_("Target"));
+    frame = gtk_frame_new (_("Target HACKED"));
     gtk_container_add (GTK_CONTAINER (frame), table);
     
     g_free (buff);
@@ -661,7 +694,7 @@ static
 {
     GtkWidget *frame;
     
-    ctrl->plot = gtk_polar_plot_new (ctrl->qth, ctrl->pass);
+    ctrl->plot = gtk_polar_plot_new (ctrl->qth, ctrl->target.passList[0]);
     
     frame = gtk_frame_new (NULL);
     gtk_container_add (GTK_CONTAINER (frame), ctrl->plot);
@@ -691,45 +724,41 @@ static void
  * This function is called when the user selects a new satellite.
  */
 static void
-        sat_selected_cb (GtkComboBox *satsel, gpointer data)
+        sat_selected_cb (GtkCellRendererToggle *cell_renderer, gchar *path_str, gpointer data)
 {
     GtkRotCtrl *ctrl = GTK_ROT_CTRL (data);
+    GtkTreePath *path = gtk_tree_path_new_from_string (path_str);
+    GtkTreeIter iter;
+    gboolean enable;
     gint i;
-    
-    i = gtk_combo_box_get_active (satsel);
-    if (i >= 0) {
-        ctrl->target = SAT (g_slist_nth_data (ctrl->sats, i));
-        
+
+    gtk_tree_model_get_iter (GTK_TREE_MODEL(ctrl->satsList), &iter, path);
+    gtk_tree_model_get (GTK_TREE_MODEL(ctrl->satsList), &iter, TOGGLE_COLUMN, &enable, -1);
+    enable ^= 1;
+
+    gtk_list_store_set(ctrl->satsList, &iter, TOGGLE_COLUMN, enable, -1);
+
+    sscanf(path_str, " %d ",&i);
+    printf("%d",i);
+    if(enable && i >= 0 && ctrl->plot != NULL){
+        ctrl->target.targetList[0] = SAT (g_slist_nth_data (ctrl->sats, i));
         /* update next pass */
-        if (ctrl->pass != NULL)
-            free_pass (ctrl->pass);
-        
-        if (ctrl->target->el > 0.0)
-            ctrl->pass = get_current_pass (ctrl->target, ctrl->qth, ctrl->t);
+        if (ctrl->target.passList[0] != NULL)
+            free_pass (ctrl->target.passList[0]);
+
+        if (ctrl->target.targetList[0]->el > 0.0)
+            ctrl->target.passList[0] = get_current_pass (ctrl->target.targetList[0], ctrl->qth, ctrl->t);
         else
-            ctrl->pass = get_pass (ctrl->target, ctrl->qth, ctrl->t, 3.0);
+            ctrl->target.passList[0] = get_pass (ctrl->target.targetList[0], ctrl->qth, ctrl->t, 3.0);
 
         set_flipped_pass(ctrl);
-
-    }
-    else {
-        sat_log_log (SAT_LOG_LEVEL_ERROR,
-                     _("%s:%s: Invalid satellite selection: %d"),
-                     __FILE__, __FUNCTION__, i);
-        
-        /* clear pass just in case... */
-        if (ctrl->pass != NULL) {
-            free_pass (ctrl->pass);
-            ctrl->pass = NULL;
-        }
-        
-    }
     
-    /* in either case, we set the new pass (even if NULL) on the polar plot */
-    if (ctrl->plot != NULL)
-        gtk_polar_plot_set_pass (GTK_POLAR_PLOT (ctrl->plot), ctrl->pass);
+        /* Plots a new pass only if there is a new element added */
+        gtk_polar_plot_set_pass (GTK_POLAR_PLOT (ctrl->plot), ctrl->target.passList[0]);
+    }
+    /* Frees the path */
+    gtk_tree_path_free (path);
 }
-
 
 /** \brief Manage toggle signals (tracking)
  * \param button Pointer to the GtkToggle button.
@@ -904,21 +933,21 @@ static gboolean
        set the rotor controller to 0 deg El and to the Az where the
        target sat is expected to come up or where it last went down
     */
-    if (ctrl->tracking && ctrl->target) {
-        if (ctrl->target->el < 0.0) {
-            if (ctrl->pass != NULL) {
-                if (ctrl->t < ctrl->pass->aos) {
-                    setaz=ctrl->pass->aos_az;
+    if (ctrl->tracking && ctrl->target.targetList[0]) {
+        if (ctrl->target.targetList[0]->el < 0.0) {
+            if (ctrl->target.passList[0] != NULL) {
+                if (ctrl->t < ctrl->target.passList[0]->aos) {
+                    setaz=ctrl->target.passList[0]->aos_az;
                     setel=0;
-                } else if (ctrl->t > ctrl->pass->los) {
-                    setaz=ctrl->pass->los_az;
+                } else if (ctrl->t > ctrl->target.passList[0]->los) {
+                    setaz=ctrl->target.passList[0]->los_az;
                     setel=0;
                 }
             }
         }
         else { 
-            setaz=ctrl->target->az;
-            setel=ctrl->target->el;
+            setaz=ctrl->target.targetList[0]->az;
+            setel=ctrl->target.targetList[0]->el;
         }
         /* if this is a flipped pass and the rotor supports it*/
         if ((ctrl->flipped)&&(ctrl->conf->maxel>=180.0)){
@@ -977,7 +1006,7 @@ static gboolean
             if (ctrl->tracking){
                 /*if we are in a pass try to lead the satellite 
                   some so we are not always chasing it*/
-                if (ctrl->target->el>0.0) {
+                if (ctrl->target.targetList[0]->el>0.0) {
                     /*starting the rotator moving while we do some computation can lead to errors later*/
                     /* 
                        compute a time in the future when the position is 
@@ -985,16 +1014,16 @@ static gboolean
                     */         
                     
                     /*use a working copy so data does not get corrupted*/
-                    sat=memcpy(&(sat_working),ctrl->target,sizeof(sat_t));
+                    sat=memcpy(&(sat_working),ctrl->target.targetList[0],sizeof(sat_t));
                     
                     /*
                       compute az/el in the future that is past end of pass 
                       or exceeds tolerance
                     */
-                    if (ctrl->pass) {
+                    if (ctrl->target.passList[0]) {
                         /* the next point is before the end of the pass 
                            if there is one.*/
-                        time_delta=ctrl->pass->los-ctrl->t;
+                        time_delta=ctrl->target.passList[0]->los-ctrl->t;
                     } else {
                         /* otherwise look 20 minutes into the future*/
                         time_delta=1.0/72.0;
@@ -1097,8 +1126,8 @@ static gboolean
     
     
     /* update target object on polar plot */
-    if (ctrl->target != NULL) {
-        gtk_polar_plot_set_target_pos (GTK_POLAR_PLOT (ctrl->plot), ctrl->target->az, ctrl->target->el);
+    if (ctrl->target.targetList[0] != NULL) {
+        gtk_polar_plot_set_target_pos (GTK_POLAR_PLOT (ctrl->plot), ctrl->target.targetList[0]->az, ctrl->target.targetList[0]->el);
     }
     
     /* update controller circle on polar plot */
@@ -1249,10 +1278,10 @@ static void update_count_down (GtkRotCtrl *ctrl, gdouble t)
 
     
     /* select AOS or LOS time depending on target elevation */
-    if (ctrl->target->el < 0.0)
-        targettime = ctrl->target->aos;
+    if (ctrl->target.targetList[0]->el < 0.0)
+        targettime = ctrl->target.targetList[0]->aos;
     else
-        targettime = ctrl->target->los;
+        targettime = ctrl->target.targetList[0]->los;
     
     delta = targettime - t;
     
@@ -1520,8 +1549,8 @@ static gboolean is_flipped_pass (pass_t * pass,rot_az_type_t type){
 
 static inline void set_flipped_pass (GtkRotCtrl* ctrl){
     if (ctrl->conf)
-        if (ctrl->pass){
-            ctrl->flipped=is_flipped_pass(ctrl->pass,ctrl->conf->aztype);
+        if (ctrl->target.passList[0]){
+            ctrl->flipped=is_flipped_pass(ctrl->target.passList[0],ctrl->conf->aztype);
         }
 
 }

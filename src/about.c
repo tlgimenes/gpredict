@@ -56,6 +56,7 @@ const gchar *authors[] = {
     "Paul Schulz, VK5FPAW (various patches)",
     "Patrick Strasser, OE6PSE (natural sorting)",
     "Martin Pool (natural sorting)",
+    "Tiago Lobato Gimenes (multiple satellite search)",
     "",
     "Imagery:",
     "Most of the maps originate from NASA Visible Earth",

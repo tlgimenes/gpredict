@@ -53,11 +53,26 @@ extern "C" {
 
 #define IS_GTK_ROT_CTRL(obj)       G_TYPE_CHECK_INSTANCE_TYPE (obj, gtk_rot_ctrl_get_type ())
 
+// Used to do the track widget    
+enum {
+   TEXT_COLUMN,
+   TOGGLE_COLUMN,
+   N_COLUMN
+};
 
 typedef struct _gtk_rot_ctrl      GtkRotCtrl;
 typedef struct _GtkRotCtrlClass   GtkRotCtrlClass;
+// Tiago's modification
+typedef struct _target_sat        TargetSat;
 
-
+// Tiago's modification
+// Always the first element is tracked !
+struct _target_sat
+{
+    int numSatToTrack;              /*!< Number of satellites in the list */
+    sat_t **targetList;    /*!< List of targeted satellites */
+    pass_t **passList;  /*!< List of next pass of targets */
+};
 
 struct _gtk_rot_ctrl
 {
@@ -79,9 +94,10 @@ struct _gtk_rot_ctrl
     gdouble       t;  /*!< Time when sat data last has been updated. */
     
     /* satellites */
+    GtkListStore *satsList;    /*!< List of sats in current module */
     GSList *sats;       /*!< List of sats in parent module */
-    sat_t  *target;     /*!< Target satellite */
-    pass_t *pass;       /*!< Next pass of target satellite */
+    // Tiago's modification
+    TargetSat target;
     qth_t  *qth;        /*!< The QTH for this module */
     gboolean flipped;   /*!< Whether the current pass loaded is a flip pass or not */
 
