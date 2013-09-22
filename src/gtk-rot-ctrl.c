@@ -739,7 +739,6 @@ static void
     gtk_list_store_set(ctrl->satsList, &iter, TOGGLE_COLUMN, enable, -1);
 
     sscanf(path_str, " %d ",&i);
-    printf("%d",i);
     if(enable && i >= 0 && ctrl->plot != NULL){
         ctrl->target.targetList[0] = SAT (g_slist_nth_data (ctrl->sats, i));
         /* update next pass */
