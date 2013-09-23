@@ -62,6 +62,13 @@ enum {
    N_COLUMN
 };
 
+enum {
+    TEXT_COLUMN_PRIORITY,
+    N_COLUMN_PRIORITY
+};
+
+//blabla
+
 typedef struct _gtk_rot_ctrl      GtkRotCtrl;
 typedef struct _GtkRotCtrlClass   GtkRotCtrlClass;
 // Tiago's modification
@@ -93,12 +100,14 @@ struct _gtk_rot_ctrl
     GtkWidget *DevSel;
     GtkWidget *plot;    /*!< Polar plot widget */
     GtkWidget *LockBut;
+    GtkWidget *Advanced;
                         
     rotor_conf_t *conf;
     gdouble       t;  /*!< Time when sat data last has been updated. */
     
     /* satellites */
     GtkListStore *checkSatsList;    /*!< List of sats in current module */
+    GtkListStore *prioritySatsList;
     GSList *sats;       /*!< List of sats in parent module */
     // Tiago's modification
     TargetSat target;

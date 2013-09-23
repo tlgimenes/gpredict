@@ -85,6 +85,7 @@ static void delay_changed_cb (GtkSpinButton *spin, gpointer data);
 static void toler_changed_cb (GtkSpinButton *spin, gpointer data);
 static void rot_selected_cb (GtkComboBox *box, gpointer data);
 static void rot_locked_cb (GtkToggleButton *button, gpointer data);
+static void rot_advanced_cb(GtkToggleButton *button, gpointer data);
 static gboolean rot_ctrl_timeout_cb (gpointer data);
 static void update_count_down (GtkRotCtrl *ctrl, gdouble t);
 
@@ -105,6 +106,7 @@ static inline void set_flipped_pass (GtkRotCtrl* ctrl);
 static void append_elem_priority_queue(GtkRotCtrl* ctrl, int i);
 static void remove_elem_priority_queue(GtkRotCtrl* ctrl, int i);
 static void swap_elem_priority_queue(GtkRotCtrl* ctrl, int i, int j);
+static int get_elem_index_priority_queue(GtkRotCtrl *ctrl, int i);
 
 static void next_elem_to_track(GtkRotCtrl* ctrl);
 
@@ -476,17 +478,15 @@ static
 static
         GtkWidget *create_target_widgets (GtkRotCtrl *ctrl)
 {
-    GtkWidget *frame,*table,*label,*satsel,*track;
+    GtkWidget *frame,*table,*label,*satsel;
     GtkTreeViewColumn *sat_nickname, *checkbox;
     GtkCellRenderer *rend_sat_nickname, *rend_checkbox;
     GtkWidget *tree;
     GtkTreeIter iter;
-    gchar *buff;
     guint i, n;
     sat_t *sat = NULL;
     
 
-    buff = g_strdup_printf (FMTSTR, 0.0);
     
     table = gtk_table_new (6, 5, FALSE);
     gtk_container_set_border_width (GTK_CONTAINER (table), 5);
@@ -527,44 +527,26 @@ static
     // Callback function
     g_signal_connect (rend_checkbox, "toggled", G_CALLBACK (sat_selected_cb), ctrl);
 
-    
-    /* tracking button */
-    track = gtk_toggle_button_new_with_label (_("Track"));
-    gtk_widget_set_tooltip_text (track, _("Track the satellite when it is within range"));
-    gtk_table_attach_defaults (GTK_TABLE (table), track, 3, 5, 0, 1);
-    g_signal_connect (track, "toggled", G_CALLBACK (track_toggle_cb), ctrl);
-    
-    /* Azimuth */
-    label = gtk_label_new (_("Az:"));
-    gtk_misc_set_alignment (GTK_MISC (label), 1.0, 0.5);
-    gtk_table_attach_defaults (GTK_TABLE (table), label, 4, 5, 1, 2);
-    
-    ctrl->AzSat = gtk_label_new (buff);
-    gtk_misc_set_alignment (GTK_MISC (ctrl->AzSat), 1.0, 0.5);
-    gtk_table_attach_defaults (GTK_TABLE (table), ctrl->AzSat, 3, 4, 1, 2);
-    
-    
-    /* Elevation */
-    label = gtk_label_new (_("El:"));
-    gtk_misc_set_alignment (GTK_MISC (label), 1.0, 0.5);
-    gtk_table_attach_defaults (GTK_TABLE (table), label, 3, 5, 2, 3);
-    
-    ctrl->ElSat = gtk_label_new (buff);
-    gtk_misc_set_alignment (GTK_MISC (ctrl->ElSat), 1.0, 0.5);
-    gtk_table_attach_defaults (GTK_TABLE (table), ctrl->ElSat, 3, 4, 2, 3);
-    
-    /* count down */
-    label = gtk_label_new (_("\316\224T:"));
-    gtk_misc_set_alignment (GTK_MISC (label), 1.0, 0.5);
-    gtk_table_attach_defaults (GTK_TABLE (table), label, 3, 5, 3, 4);
-    ctrl->SatCnt = gtk_label_new ("00:00:00");
-    gtk_misc_set_alignment (GTK_MISC (ctrl->SatCnt), 1.0, 0.5);
-    gtk_table_attach_defaults (GTK_TABLE (table), ctrl->SatCnt, 3, 4, 3, 4);
+    /* satellite priority */
+    ctrl->prioritySatsList =  gtk_list_store_new(N_COLUMN_PRIORITY, G_TYPE_STRING);
+    tree = gtk_tree_view_new_with_model(GTK_TREE_MODEL(ctrl->prioritySatsList));
+    // Create render
+    rend_sat_nickname = gtk_cell_renderer_text_new();
+    // Set the column view
+    sat_nickname = gtk_tree_view_column_new_with_attributes("Change Priority of Satellite", rend_sat_nickname, "text", TEXT_COLUMN, NULL);
+    // Appends the columns
+    gtk_tree_view_append_column(GTK_TREE_VIEW(tree), sat_nickname);
+    // Sets the viewmode
+    gtk_tree_view_set_model(GTK_TREE_VIEW(tree), GTK_TREE_MODEL(ctrl->prioritySatsList));
+    // Creates a scrolling window 
+    satsel = gtk_scrolled_window_new(NULL, NULL);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(satsel), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC); 
+    gtk_container_add(GTK_CONTAINER(satsel), tree);
+    gtk_table_attach_defaults(GTK_TABLE (table), satsel, 3, 4, 0, 6);
     
     frame = gtk_frame_new (_("Target HACKED"));
     gtk_container_add (GTK_CONTAINER (frame), table);
     
-    g_free (buff);
     
     return frame;
 }
@@ -573,16 +555,18 @@ static
 static GtkWidget *
         create_conf_widgets (GtkRotCtrl *ctrl)
 {
-    GtkWidget *frame,*table,*label,*timer,*toler;
+    GtkWidget *frame,*table,*label,*timer,*toler, *track;
     GDir        *dir = NULL;   /* directory handle */
     GError      *error = NULL; /* error flag and info */
     gchar       *dirname;      /* directory name */
     gchar      **vbuff;
     const gchar *filename;     /* file name */
     gchar       *rotname;
+    gchar *buff;
     
+    buff = g_strdup_printf (FMTSTR, 0.0);
     
-    table = gtk_table_new (3, 3, FALSE);
+    table = gtk_table_new (6, 4, FALSE);
     gtk_container_set_border_width (GTK_CONTAINER (table), 5);
     gtk_table_set_col_spacings (GTK_TABLE (table), 5);
     gtk_table_set_row_spacings (GTK_TABLE (table), 5);
@@ -590,7 +574,7 @@ static GtkWidget *
     
     label = gtk_label_new (_("Device:"));
     gtk_misc_set_alignment (GTK_MISC (label), 1.0, 0.5);
-    gtk_table_attach_defaults (GTK_TABLE (table), label, 0, 1, 0, 1);
+    gtk_table_attach_defaults (GTK_TABLE (table), label, 0, 2, 0, 1);
     
     ctrl->DevSel = gtk_combo_box_new_text ();
     gtk_widget_set_tooltip_text (ctrl->DevSel, _("Select antenna rotator device"));
@@ -635,18 +619,52 @@ static GtkWidget *
 
     gtk_combo_box_set_active (GTK_COMBO_BOX (ctrl->DevSel), 0);
     g_signal_connect (ctrl->DevSel, "changed", G_CALLBACK (rot_selected_cb), ctrl);
-    gtk_table_attach_defaults (GTK_TABLE (table), ctrl->DevSel, 1, 2, 0, 1);
+    gtk_table_attach_defaults (GTK_TABLE (table), ctrl->DevSel, 2, 5, 0, 1);
 
     /* Engage button */
     ctrl->LockBut = gtk_toggle_button_new_with_label (_("Engage"));
     gtk_widget_set_tooltip_text (ctrl->LockBut, _("Engage the selected rotor device"));
     g_signal_connect (ctrl->LockBut, "toggled", G_CALLBACK (rot_locked_cb), ctrl);
-    gtk_table_attach_defaults (GTK_TABLE (table), ctrl->LockBut, 2, 3, 0, 1);
+    gtk_table_attach_defaults (GTK_TABLE (table), ctrl->LockBut, 5, 6, 0, 1);
+  
+    /* tracking button */
+    track = gtk_toggle_button_new_with_label (_("Track"));
+    gtk_widget_set_tooltip_text (track, _("Track the satellite when it is within range"));
+    gtk_table_attach_defaults (GTK_TABLE (table), track, 6, 7, 0, 1);
+    g_signal_connect (track, "toggled", G_CALLBACK (track_toggle_cb), ctrl);   
+ 
+    /* Azimuth */
+    label = gtk_label_new (_("Az:"));
+    gtk_misc_set_alignment (GTK_MISC (label), 1.0, 0.5);
+    gtk_table_attach_defaults (GTK_TABLE (table), label, 0, 1, 1, 2);
     
+    ctrl->AzSat = gtk_label_new (buff);
+    gtk_misc_set_alignment (GTK_MISC (ctrl->AzSat), 1.0, 0.5);
+    gtk_table_attach_defaults (GTK_TABLE (table), ctrl->AzSat, 1, 2, 1, 2);
+    
+    
+    /* Elevation */
+    label = gtk_label_new (_("El:"));
+    gtk_misc_set_alignment (GTK_MISC (label), 1.0, 0.5);
+    gtk_table_attach_defaults (GTK_TABLE (table), label, 2, 3, 1, 2);
+    
+    ctrl->ElSat = gtk_label_new (buff);
+    gtk_misc_set_alignment (GTK_MISC (ctrl->ElSat), 1.0, 0.5);
+    gtk_table_attach_defaults (GTK_TABLE (table), ctrl->ElSat, 3, 4, 1, 2);
+    
+    /* count down */
+    label = gtk_label_new (_("\316\224T:"));
+    gtk_misc_set_alignment (GTK_MISC (label), 1.0, 0.5);
+    gtk_table_attach_defaults (GTK_TABLE (table), label, 4, 5, 1, 2);
+    ctrl->SatCnt = gtk_label_new ("00:00:00");
+    gtk_misc_set_alignment (GTK_MISC (ctrl->SatCnt), 1.0, 0.5);
+    gtk_table_attach_defaults (GTK_TABLE (table), ctrl->SatCnt, 5, 6, 1, 2);
+
+
     /* Timeout */
     label = gtk_label_new (_("Cycle:"));
     gtk_misc_set_alignment (GTK_MISC (label), 1.0, 0.5);
-    gtk_table_attach_defaults (GTK_TABLE (table), label, 0, 1, 1, 2);
+    gtk_table_attach_defaults (GTK_TABLE (table), label, 0, 1, 2, 3);
     
     timer = gtk_spin_button_new_with_range (1000, 10000, 10);
     gtk_spin_button_set_digits (GTK_SPIN_BUTTON (timer), 0);
@@ -655,17 +673,17 @@ static GtkWidget *
                                    "commands sent to the rotator."));
     gtk_spin_button_set_value (GTK_SPIN_BUTTON (timer), ctrl->delay);
     g_signal_connect (timer, "value-changed", G_CALLBACK (delay_changed_cb), ctrl);
-    gtk_table_attach (GTK_TABLE (table), timer, 1, 2, 1, 2,
+    gtk_table_attach (GTK_TABLE (table), timer, 1, 5, 2, 3,
                       GTK_FILL, GTK_FILL, 0, 0);
     
     label = gtk_label_new (_("msec"));
     gtk_misc_set_alignment (GTK_MISC (label), 0.0, 0.5);
-    gtk_table_attach_defaults (GTK_TABLE (table), label, 2, 3, 1, 2);
+    gtk_table_attach_defaults (GTK_TABLE (table), label, 5, 6, 2, 3);
 
     /* Tolerance */
     label = gtk_label_new (_("Tolerance:"));
     gtk_misc_set_alignment (GTK_MISC (label), 1.0, 0.5);
-    gtk_table_attach_defaults (GTK_TABLE (table), label, 0, 1, 2, 3);
+    gtk_table_attach_defaults (GTK_TABLE (table), label, 0, 2, 3, 4);
     
     toler = gtk_spin_button_new_with_range (0.01, 50.0, 0.01);
     gtk_spin_button_set_digits (GTK_SPIN_BUTTON (toler), 2);
@@ -676,20 +694,23 @@ static GtkWidget *
                                    "is smaller than the tolerance, no new commands are sent"));
     gtk_spin_button_set_value (GTK_SPIN_BUTTON (toler), ctrl->tolerance);
     g_signal_connect (toler, "value-changed", G_CALLBACK (toler_changed_cb), ctrl);
-    gtk_table_attach (GTK_TABLE (table), toler, 1, 2, 2, 3,
+    gtk_table_attach (GTK_TABLE (table), toler, 2, 5, 3, 4,
                       GTK_FILL, GTK_FILL, 0, 0);
     
     
     label = gtk_label_new (_("deg"));
     gtk_misc_set_alignment (GTK_MISC (label), 0.0, 0.5);
-    gtk_table_attach_defaults (GTK_TABLE (table), label, 2, 3, 2, 3);
+    gtk_table_attach_defaults (GTK_TABLE (table), label, 5, 6, 3, 4);
     
+
     /* load initial rotator configuration */
     rot_selected_cb (GTK_COMBO_BOX (ctrl->DevSel), ctrl);
     
     frame = gtk_frame_new (_("Settings"));
     gtk_container_add (GTK_CONTAINER (frame), table);
     
+    g_free (buff);
+
     return frame;
 }
 
@@ -737,6 +758,9 @@ static void
 {
     GtkRotCtrl *ctrl = GTK_ROT_CTRL (data);
     GtkTreePath *path = gtk_tree_path_new_from_string (path_str);
+    sat_t * sat;
+    char *path_str_priority;
+    unsigned int ndigits, index_priority_list;
     GtkTreeIter iter;
     gboolean enable;
     gint i;
@@ -747,29 +771,58 @@ static void
 
     gtk_list_store_set(ctrl->checkSatsList, &iter, TOGGLE_COLUMN, enable, -1);
 
+    /*
+     *  REMOVE THIS BEFORE SENDING !
+     */
+    int k;
+    for(k=0; k < g_slist_length (ctrl->sats); k++){
+        if(ctrl->target.sats[k] != NOT_IN_PRIORITY_QUEUE)
+            if(ctrl->target.priorityQueue[ctrl->target.sats[k]] != k) 
+                printf("FUCKED IN : %dth object\n", k);
+    }
+
     sscanf(path_str, " %d ",&i);
     if(enable && i >= 0){
-        append_elem_priority_queue(ctrl, i);
+        /* Show new added satellite in the priority queue */
+        sat = SAT (g_slist_nth_data (ctrl->sats, i));
+        if (sat) {
+            gtk_list_store_append(ctrl->prioritySatsList , &iter);
+            gtk_list_store_set(ctrl->prioritySatsList, &iter, TEXT_COLUMN, sat->nickname, -1);
+            /* Adds the satellite to the priorityQueue */
+            append_elem_priority_queue(ctrl, i);
+        }
     }
     else if(!enable && i >= 0){
+        index_priority_list = get_elem_index_priority_queue(ctrl, i);
         remove_elem_priority_queue(ctrl, i);
+        // Gets the new iter
+        ndigits = log10(index_priority_list+1)+1;
+        path_str_priority = malloc(sizeof(char)*ndigits);
+        sprintf(path_str_priority, "%d", index_priority_list);
+        gtk_tree_path_free (path);
+        path = gtk_tree_path_new_from_string (path_str_priority);
+        gtk_tree_model_get_iter (GTK_TREE_MODEL(ctrl->prioritySatsList), &iter, path);
+        // Removes the row
+        gtk_list_store_remove(ctrl->prioritySatsList, &iter);
+        free(path_str_priority);
     }
-    //ctrl->target.targeting = SAT (g_slist_nth_data (ctrl->sats, ctrl->target.priorityQueue[0]));
-    next_elem_to_track(ctrl);
-    /* update next pass */
-    if (ctrl->target.targeting != NULL)
-        free_pass (ctrl->target.pass);
+    if(ctrl->target.targeting != NULL){
+        next_elem_to_track(ctrl);
+        /* update next pass */
+        if (ctrl->target.targeting != NULL)
+            free_pass (ctrl->target.pass);
 
-    if (ctrl->target.targeting->el > 0.0)
-        ctrl->target.pass = get_current_pass (ctrl->target.targeting, ctrl->qth, ctrl->t);
-    else
-        ctrl->target.pass = get_pass (ctrl->target.targeting, ctrl->qth, ctrl->t, 3.0);
+        if (ctrl->target.targeting->el > 0.0)
+            ctrl->target.pass = get_current_pass (ctrl->target.targeting, ctrl->qth, ctrl->t);
+        else
+            ctrl->target.pass = get_pass (ctrl->target.targeting, ctrl->qth, ctrl->t, 3.0);
 
-    set_flipped_pass(ctrl);
+        set_flipped_pass(ctrl);
 
-    if(ctrl->plot != NULL){
-        /* Plots a new pass only if there is a new element added */
-        gtk_polar_plot_set_pass (GTK_POLAR_PLOT (ctrl->plot), ctrl->target.pass);
+        if(ctrl->plot != NULL){
+            /* Plots a new pass only if there is a new element added */
+            gtk_polar_plot_set_pass (GTK_POLAR_PLOT (ctrl->plot), ctrl->target.pass);
+        }
     }
 
     /* Frees the path */
@@ -917,7 +970,6 @@ static void
         ctrl->rdops = 0;
     }
 }
-
 
 /** \brief Rotator controller timeout function
  * \param data Pointer to the GtkRotCtrl widget.
@@ -1577,23 +1629,89 @@ static inline void set_flipped_pass (GtkRotCtrl* ctrl){
 static void
         append_elem_priority_queue(GtkRotCtrl* ctrl, int i)
 {
-    int n;
+    int *aux;
+    int n, k;
 
     ctrl->target.numSatToTrack++;
     n = ctrl->target.numSatToTrack;
     if(ctrl->target.priorityQueue == NULL){
-        ctrl->target.priorityQueue = malloc(sizeof(int)*n);
+        ctrl->target.priorityQueue = malloc(sizeof(int));
+
+        /* update targeting satellite */
+        ctrl->target.targeting = SAT (g_slist_nth_data (ctrl->sats, i));
+        /* update next pass */
+        if (ctrl->target.targeting != NULL)
+            free_pass (ctrl->target.pass);
+
+        if (ctrl->target.targeting->el > 0.0)
+            ctrl->target.pass = get_current_pass (ctrl->target.targeting, ctrl->qth, ctrl->t);
+        else
+            ctrl->target.pass = get_pass (ctrl->target.targeting, ctrl->qth, ctrl->t, 3.0);
+
+        set_flipped_pass(ctrl);
+
+        if(ctrl->plot != NULL){
+            /* Plots a new pass only if there is a new element added */
+            gtk_polar_plot_set_pass (GTK_POLAR_PLOT (ctrl->plot), ctrl->target.pass);
+        }
     }
     else{
-        ctrl->target.priorityQueue = realloc(ctrl->target.priorityQueue, sizeof(int)*n);
+        aux = malloc(sizeof(int)*n);
+        for(k=0; k < n; k++){
+            aux[k] = ctrl->target.priorityQueue[k];
+        }
+        ctrl->target.priorityQueue = aux;
     }
     ctrl->target.priorityQueue[n-1] = i;
+    ctrl->target.sats[i] = n-1;
+
+    return n-1;
 }
 
-static void 
+static void
         remove_elem_priority_queue(GtkRotCtrl* ctrl, int i)
 {
-    /* Finish CODE here */
+    int j = ctrl->target.sats[i];
+       
+    if(j == NOT_IN_PRIORITY_QUEUE){
+        printf("ERROR IN PRIORITY LIST !\n");
+    }
+    else{
+        ctrl->target.sats[ctrl->target.priorityQueue[j]] = NOT_IN_PRIORITY_QUEUE;
+        for(; j < ctrl->target.numSatToTrack-1; j++){
+            ctrl->target.priorityQueue[j] = ctrl->target.priorityQueue[j+1];
+            ctrl->target.sats[ctrl->target.priorityQueue[j]] = j;
+        }
+        ctrl->target.priorityQueue[j] = NOT_IN_PRIORITY_QUEUE;
+
+        ctrl->target.numSatToTrack--;
+
+        if(ctrl->target.numSatToTrack == 0){
+            ctrl->target.targeting = NULL;
+            ctrl->target.pass = NULL;
+            free(ctrl->target.priorityQueue);
+            ctrl->target.priorityQueue = NULL;
+        }
+        else{
+            /* update targeting satellite */
+            ctrl->target.targeting = SAT (g_slist_nth_data (ctrl->sats, ctrl->target.priorityQueue[0]));
+            /* update next pass */
+            if (ctrl->target.targeting != NULL)
+                free_pass (ctrl->target.pass);
+
+            if (ctrl->target.targeting->el > 0.0)
+                ctrl->target.pass = get_current_pass (ctrl->target.targeting, ctrl->qth, ctrl->t);
+            else
+                ctrl->target.pass = get_pass (ctrl->target.targeting, ctrl->qth, ctrl->t, 3.0);
+
+            set_flipped_pass(ctrl);
+
+            if(ctrl->plot != NULL){
+                /* Plots a new pass only if there is a new element added */
+                gtk_polar_plot_set_pass (GTK_POLAR_PLOT (ctrl->plot), ctrl->target.pass);
+            }
+        }
+    }
 }
 
 static void 
@@ -1602,8 +1720,19 @@ static void
     /* Finish CODE here */
 }
 
+static int get_elem_index_priority_queue(GtkRotCtrl *ctrl, int i){
+    int j = ctrl->target.sats[i];
+
+    if(j == NOT_IN_PRIORITY_QUEUE){
+        printf("ERROR IN PRIORITY LIST !\n");
+    }
+    return j;
+}
+
 static void
         next_elem_to_track(GtkRotCtrl* ctrl)
 {
-    ctrl->target.targeting = SAT (g_slist_nth_data (ctrl->sats, ctrl->target.priorityQueue[0]));
+    if(ctrl->target.priorityQueue[0] != NOT_IN_PRIORITY_QUEUE){
+        ctrl->target.targeting = SAT (g_slist_nth_data (ctrl->sats, ctrl->target.priorityQueue[0]));
+    }
 }
