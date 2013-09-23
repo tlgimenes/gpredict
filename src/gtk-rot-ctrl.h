@@ -53,6 +53,8 @@ extern "C" {
 
 #define IS_GTK_ROT_CTRL(obj)       G_TYPE_CHECK_INSTANCE_TYPE (obj, gtk_rot_ctrl_get_type ())
 
+#define NOT_IN_PRIORITY_QUEUE -1
+
 // Used to do the track widget    
 enum {
    TEXT_COLUMN,
@@ -70,8 +72,10 @@ typedef struct _target_sat        TargetSat;
 struct _target_sat
 {
     int numSatToTrack;              /*!< Number of satellites in the list */
-    sat_t **targetList;    /*!< List of targeted satellites */
-    pass_t **passList;  /*!< List of next pass of targets */
+    int *priorityQueue;             /*!< Index of next satellite to track */
+    int *sats;                      /*!< Index of corresponding satellite in the priorityQueue */
+    sat_t* targeting;
+    pass_t* pass;
 };
 
 struct _gtk_rot_ctrl
@@ -94,7 +98,7 @@ struct _gtk_rot_ctrl
     gdouble       t;  /*!< Time when sat data last has been updated. */
     
     /* satellites */
-    GtkListStore *satsList;    /*!< List of sats in current module */
+    GtkListStore *checkSatsList;    /*!< List of sats in current module */
     GSList *sats;       /*!< List of sats in parent module */
     // Tiago's modification
     TargetSat target;
