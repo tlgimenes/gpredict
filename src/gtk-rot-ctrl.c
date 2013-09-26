@@ -80,12 +80,12 @@ static GtkWidget *create_plot_widget (GtkRotCtrl *ctrl);
 static void store_sats (gpointer key, gpointer value, gpointer user_data);
 
 static void sat_selected_cb (GtkCellRendererToggle *cell_renderer, gchar *path_str, gpointer user_data);
+static void sat_changed_minComunication_cb(GtkCellRendererText *cellrenderertext, gchar *arg1, gchar *arg2, gpointer user_data);
 static void track_toggle_cb (GtkToggleButton *button, gpointer data);
 static void delay_changed_cb (GtkSpinButton *spin, gpointer data);
 static void toler_changed_cb (GtkSpinButton *spin, gpointer data);
 static void rot_selected_cb (GtkComboBox *box, gpointer data);
 static void rot_locked_cb (GtkToggleButton *button, gpointer data);
-static void rot_advanced_cb(GtkToggleButton *button, gpointer data);
 static gboolean rot_ctrl_timeout_cb (gpointer data);
 static void update_count_down (GtkRotCtrl *ctrl, gdouble t);
 
@@ -179,6 +179,7 @@ static void
     ctrl->target.numSatToTrack = 0;
     ctrl->target.priorityQueue = NULL;
     ctrl->target.sats = NULL;
+    ctrl->target.minComunication = NULL;
 
  //   ctrl->target = NULL;
  //   ctrl->pass = NULL;
@@ -232,6 +233,7 @@ GtkWidget *
 {
     GtkWidget *widget;
     GtkWidget *table;
+    guint num_sats;
 
     /* check that we have rot conf */
     if (!have_conf()) {
@@ -252,7 +254,11 @@ GtkWidget *
     
     /* store QTH */
     GTK_ROT_CTRL (widget)->qth = module->qth;
-    
+     
+    num_sats = g_slist_length (GTK_ROT_CTRL (widget)->sats);
+    GTK_ROT_CTRL (widget)->target.sats = malloc(sizeof(int)*num_sats);
+    GTK_ROT_CTRL (widget)->target.minComunication = malloc(sizeof(float)*num_sats);
+
     /* get next pass for target satellite */
    /* if (GTK_ROT_CTRL (widget)->target.targeting){
         if (GTK_ROT_CTRL (widget)->target.targeting->el > 0.0) {
@@ -274,20 +280,20 @@ GtkWidget *
     gdk_rgb_find_color (gtk_widget_get_colormap (widget), &ColGreen);
 
     /* create contents */
-    table = gtk_table_new (2, 7, FALSE);
+    table = gtk_table_new (4, 4, FALSE);
     gtk_table_set_row_spacings (GTK_TABLE (table), 0);
     gtk_table_set_col_spacings (GTK_TABLE (table), 0);
     gtk_container_set_border_width (GTK_CONTAINER (table), 10);
     gtk_table_attach (GTK_TABLE (table), create_az_widgets (GTK_ROT_CTRL (widget)),
-                      5, 6, 0, 1, GTK_FILL, GTK_SHRINK, 0, 0);
+                      0, 1, 0, 1, GTK_FILL, GTK_SHRINK, 0, 0);
     gtk_table_attach (GTK_TABLE (table), create_el_widgets (GTK_ROT_CTRL (widget)),
-                      5, 6, 1, 2, GTK_FILL, GTK_SHRINK, 0, 0);
+                      1, 2, 0, 1, GTK_FILL, GTK_SHRINK, 0, 0);
     gtk_table_attach (GTK_TABLE (table), create_target_widgets (GTK_ROT_CTRL (widget)),
-                      0, 4, 0, 2, GTK_FILL | GTK_EXPAND, GTK_FILL | GTK_EXPAND, 0, 0);
+                      0, 4, 2, 4, GTK_FILL | GTK_EXPAND, GTK_FILL | GTK_EXPAND, 0, 0);
     gtk_table_attach (GTK_TABLE (table), create_conf_widgets (GTK_ROT_CTRL (widget)),
-                      4, 5, 0, 2, GTK_FILL | GTK_EXPAND, GTK_FILL | GTK_EXPAND, 0, 0);
+                      0, 3, 1, 2, GTK_FILL | GTK_EXPAND, GTK_SHRINK , 0, 0);
     gtk_table_attach (GTK_TABLE (table), create_plot_widget (GTK_ROT_CTRL (widget)),
-                      6, 7, 0, 2, GTK_FILL | GTK_EXPAND, GTK_FILL | GTK_EXPAND, 0, 0);
+                      3, 4, 0, 2, GTK_FILL | GTK_EXPAND, GTK_FILL | GTK_EXPAND, 0, 0);
 
     gtk_container_add (GTK_CONTAINER (widget), table);
     
@@ -478,15 +484,13 @@ static
 static
         GtkWidget *create_target_widgets (GtkRotCtrl *ctrl)
 {
-    GtkWidget *frame,*table,*label,*satsel;
-    GtkTreeViewColumn *sat_nickname, *checkbox;
-    GtkCellRenderer *rend_sat_nickname, *rend_checkbox;
+    GtkWidget *frame,*table,*satsel;
+    GtkTreeViewColumn *sat_nickname, *checkbox, *minComunication;
+    GtkCellRenderer *rend_sat_nickname, *rend_checkbox, *rend_minComunication;
     GtkWidget *tree;
     GtkTreeIter iter;
-    guint i, n;
+    guint i, num_sats;
     sat_t *sat = NULL;
-    
-
     
     table = gtk_table_new (6, 5, FALSE);
     gtk_container_set_border_width (GTK_CONTAINER (table), 5);
@@ -494,38 +498,43 @@ static
     gtk_table_set_row_spacings (GTK_TABLE (table), 5);
 
     /* sat selector */
-    ctrl->checkSatsList =  gtk_list_store_new(N_COLUMN, G_TYPE_STRING, G_TYPE_BOOLEAN);
+    ctrl->checkSatsList =  gtk_list_store_new(N_COLUMN, G_TYPE_STRING, G_TYPE_BOOLEAN, G_TYPE_STRING);
     // set elements to store in the list
-    n = g_slist_length (ctrl->sats);
-    ctrl->target.sats = malloc(sizeof(int)*n);
-    for (i = 0; i < n; i++) {
+    num_sats = g_slist_length (ctrl->sats);
+    for (i = 0; i < num_sats; i++) {
         sat = SAT (g_slist_nth_data (ctrl->sats, i));
         if (sat) {
             gtk_list_store_append(ctrl->checkSatsList, &iter);
-            gtk_list_store_set(ctrl->checkSatsList, &iter, TEXT_COLUMN, sat->nickname, TOGGLE_COLUMN, FALSE, -1);
+            gtk_list_store_set(ctrl->checkSatsList, &iter, TEXT_COLUMN, sat->nickname, TOGGLE_COLUMN, FALSE, QNT_COLUMN, "0.000000", -1);
             ctrl->target.sats[i] = NOT_IN_PRIORITY_QUEUE;
+            ctrl->target.minComunication[i] = 0.0f;
         }
     }
     tree = gtk_tree_view_new_with_model(GTK_TREE_MODEL(ctrl->checkSatsList));
     // Create render
     rend_sat_nickname = gtk_cell_renderer_text_new();
     rend_checkbox = gtk_cell_renderer_toggle_new();
+    rend_minComunication = gtk_cell_renderer_text_new();
     // Set the column view
-    sat_nickname = gtk_tree_view_column_new_with_attributes("Select target object", rend_sat_nickname, "text", TEXT_COLUMN, NULL);
-    checkbox = gtk_tree_view_column_new_with_attributes("Select target object", rend_checkbox, "active", TOGGLE_COLUMN, NULL);
+    sat_nickname = gtk_tree_view_column_new_with_attributes("Target objects", rend_sat_nickname, "text", TEXT_COLUMN, NULL);
+    checkbox = gtk_tree_view_column_new_with_attributes("Selected objects", rend_checkbox, "active", TOGGLE_COLUMN, NULL);
+    minComunication = gtk_tree_view_column_new_with_attributes("Min Communication Time", rend_minComunication, "text",  QNT_COLUMN, NULL);
+    g_object_set(rend_minComunication, "editable", TRUE, NULL);
     // Appends the columns
     gtk_tree_view_append_column(GTK_TREE_VIEW(tree), sat_nickname);
     gtk_tree_view_append_column(GTK_TREE_VIEW(tree), checkbox);
-    gtk_tree_view_column_set_clickable(checkbox,"clickable");
+    gtk_tree_view_append_column(GTK_TREE_VIEW(tree), minComunication);
+ //   gtk_tree_view_column_set_clickable(checkbox,"clickable");
     // Sets the viewmode
     gtk_tree_view_set_model(GTK_TREE_VIEW(tree), GTK_TREE_MODEL(ctrl->checkSatsList));
     // Creates a scrolling window 
     satsel = gtk_scrolled_window_new(NULL, NULL);
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(satsel), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(satsel), GTK_POLICY_NEVER, GTK_POLICY_NEVER);
     gtk_container_add(GTK_CONTAINER(satsel), tree);
     gtk_table_attach_defaults(GTK_TABLE (table), satsel, 0, 3, 0, 6);
     // Callback function
     g_signal_connect (rend_checkbox, "toggled", G_CALLBACK (sat_selected_cb), ctrl);
+    g_signal_connect (rend_minComunication, "edited", G_CALLBACK(sat_changed_minComunication_cb), ctrl);
 
     /* satellite priority */
     ctrl->prioritySatsList =  gtk_list_store_new(N_COLUMN_PRIORITY, G_TYPE_STRING);
@@ -540,11 +549,11 @@ static
     gtk_tree_view_set_model(GTK_TREE_VIEW(tree), GTK_TREE_MODEL(ctrl->prioritySatsList));
     // Creates a scrolling window 
     satsel = gtk_scrolled_window_new(NULL, NULL);
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(satsel), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC); 
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(satsel), GTK_POLICY_NEVER, GTK_POLICY_NEVER); 
     gtk_container_add(GTK_CONTAINER(satsel), tree);
     gtk_table_attach_defaults(GTK_TABLE (table), satsel, 3, 4, 0, 6);
     
-    frame = gtk_frame_new (_("Target HACKED"));
+    frame = gtk_frame_new (_("Target"));
     gtk_container_add (GTK_CONTAINER (frame), table);
     
     
@@ -748,7 +757,8 @@ static void
 
 
 /** \brief Manage satellite selections
- * \param satsel Pointer to the GtkComboBox.
+ * \param cell_render Pointer to the GtkCellRenderToggle.
+ * \param path_str String of the i-th changed cell
  * \param data Pointer to the GtkRotCtrl widget.
  * 
  * This function is called when the user selects a new satellite.
@@ -770,16 +780,6 @@ static void
     enable ^= 1;
 
     gtk_list_store_set(ctrl->checkSatsList, &iter, TOGGLE_COLUMN, enable, -1);
-
-    /*
-     *  REMOVE THIS BEFORE SENDING !
-     */
-    int k;
-    for(k=0; k < g_slist_length (ctrl->sats); k++){
-        if(ctrl->target.sats[k] != NOT_IN_PRIORITY_QUEUE)
-            if(ctrl->target.priorityQueue[ctrl->target.sats[k]] != k) 
-                printf("FUCKED IN : %dth object\n", k);
-    }
 
     sscanf(path_str, " %d ",&i);
     if(enable && i >= 0){
@@ -827,6 +827,47 @@ static void
 
     /* Frees the path */
     gtk_tree_path_free (path);
+}
+
+/** \brief Set new minimal time of communication to selected sattelite
+ * \param cellrederertext Pointer to the GtkCellRendererText. 
+ * \param arg1 String of the i-th changed cell
+ * \param arg2 String of the new text entered by the user
+ * \param data Pointer to the GtkRotCtrl widget.
+ * 
+ * This function is called when the user changes the minimal time of communication of a satellite.
+ */
+static void 
+    sat_changed_minComunication_cb(GtkCellRendererText *cellrenderertext, gchar *arg1, gchar *arg2, gpointer data)
+{
+    GtkRotCtrl *ctrl = GTK_ROT_CTRL (data);
+    GtkTreePath *path = gtk_tree_path_new_from_string (arg1);
+    char *new_num_str;
+    GtkTreeIter iter;
+    float num = 0.0f; 
+    int res = 0, i, strlength = strlen(arg2);
+    
+    /* Transforms a number of the type *,* in a number of the type *.* */
+    for(i=0; i < strlength; i++)
+        if(arg2[i] == ',')
+            arg2[i] = '.';
+    /* Reads the number */
+    res = sscanf(arg2, "%f", &num);
+    new_num_str = malloc(sizeof(char) * strlength);
+    if(num >= 0.0f && res == 1){
+        sprintf(new_num_str, "%f", num);
+    }
+    else{
+        num = 0.0f;
+        sprintf(new_num_str, "%f", num);
+    }
+    /* Sets the new number to the tree model */
+    gtk_tree_model_get_iter (GTK_TREE_MODEL(ctrl->checkSatsList), &iter, path);
+    gtk_list_store_set(ctrl->checkSatsList, &iter, QNT_COLUMN, new_num_str, -1);
+
+    /* Sets the minCommunication to the i-th satellite */
+    sscanf(arg1, "%d", &i);
+    ctrl->target.minComunication[i] = num;
 }
 
 /** \brief Manage toggle signals (tracking)
@@ -1664,8 +1705,6 @@ static void
     }
     ctrl->target.priorityQueue[n-1] = i;
     ctrl->target.sats[i] = n-1;
-
-    return n-1;
 }
 
 static void
@@ -1674,7 +1713,9 @@ static void
     int j = ctrl->target.sats[i];
        
     if(j == NOT_IN_PRIORITY_QUEUE){
-        printf("ERROR IN PRIORITY LIST !\n");
+        sat_log_log (SAT_LOG_LEVEL_ERROR,
+                     _("%s:%d: Error in priority list"),
+                     __FILE__, __LINE__);
     }
     else{
         ctrl->target.sats[ctrl->target.priorityQueue[j]] = NOT_IN_PRIORITY_QUEUE;
@@ -1724,7 +1765,9 @@ static int get_elem_index_priority_queue(GtkRotCtrl *ctrl, int i){
     int j = ctrl->target.sats[i];
 
     if(j == NOT_IN_PRIORITY_QUEUE){
-        printf("ERROR IN PRIORITY LIST !\n");
+        sat_log_log (SAT_LOG_LEVEL_ERROR,
+                     _("%s:%d: Error in priority list"),
+                     __FILE__, __LINE__);
     }
     return j;
 }

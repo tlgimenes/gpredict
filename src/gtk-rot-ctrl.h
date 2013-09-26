@@ -59,6 +59,7 @@ extern "C" {
 enum {
    TEXT_COLUMN,
    TOGGLE_COLUMN,
+   QNT_COLUMN,
    N_COLUMN
 };
 
@@ -81,6 +82,7 @@ struct _target_sat
     int numSatToTrack;              /*!< Number of satellites in the list */
     int *priorityQueue;             /*!< Index of next satellite to track */
     int *sats;                      /*!< Index of corresponding satellite in the priorityQueue */
+    float * minComunication;        /*!< Minimun communication time of the satellite */
     sat_t* targeting;
     pass_t* pass;
 };
@@ -100,7 +102,6 @@ struct _gtk_rot_ctrl
     GtkWidget *DevSel;
     GtkWidget *plot;    /*!< Polar plot widget */
     GtkWidget *LockBut;
-    GtkWidget *Advanced;
                         
     rotor_conf_t *conf;
     gdouble       t;  /*!< Time when sat data last has been updated. */
