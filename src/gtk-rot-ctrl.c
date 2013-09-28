@@ -1070,6 +1070,9 @@ static gboolean
         return TRUE;
     }
     
+    /* Update the tracking object */
+    update_tracked_elem(ctrl);
+
     /* If we are tracking and the target satellite is within
        range, set the rotor position controller knob values to
        the target values. If the target satellite is out of range
