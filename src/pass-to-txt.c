@@ -533,6 +533,7 @@ passes_to_txt_tblcontents (GSList *passes, qth_t *qth, gint fields)
     gchar    *data = NULL;
     gchar    *buff;
     pass_t   *pass;
+    sat_t    *sat;
 
     (void) qth; /* avoid unused parameter compiler warning */
 

@@ -840,7 +840,7 @@ static void
 
     if(ctrl->target.targeting != NULL){
         /* update next pass */
-        if (ctrl->target.targeting != NULL)
+     /*   if (ctrl->target.targeting != NULL)
             free_pass (ctrl->target.pass);
 
         if (ctrl->target.targeting->el > 0.0)
@@ -848,7 +848,7 @@ static void
         else
             ctrl->target.pass = get_pass (ctrl->target.targeting, ctrl->qth, ctrl->t, 3.0);
 
-        set_flipped_pass(ctrl);
+        set_flipped_pass(ctrl);*/
 
         if(ctrl->plot != NULL){
             /* Plots a new pass only if there is a new element added */
@@ -1798,11 +1798,12 @@ static void
         next_elem_to_track(GtkRotCtrl* ctrl)
 {
     int i, num_sats;
-    gdouble min_el, maxdt, aos, los, aos_old;
+    gdouble min_el, aos_old, aos, los;
     sat_t *sat_old, *sat_new;
+    pass_t *pass;
+    guint dt;
 
     /* set variables */
-    maxdt = 3.0f;
     min_el = sat_cfg_get_int (SAT_CFG_INT_PRED_MIN_EL);
     num_sats = ctrl->target.numSatToTrack;
 
@@ -1812,32 +1813,35 @@ static void
                      __FILE__, __LINE__);
 
     /* Gets the first satellite of the priority queue */
-    sat_old = g_slist_nth_data(ctrl->sats, ctrl->target.priorityQueue[0]);
-//    aos_old = find_aos(sat_old, ctrl->qth, ctrl->t, maxdt, 1.0*sat_cfg_get_int (SAT_CFG_INT_PRED_MIN_EL));
-    if(sat_old->el > 0.0){
-        aos_old = find_prev_aos(sat_old, ctrl->qth, ctrl->t, maxdt);
+    sat_old = SAT (g_slist_nth_data(ctrl->sats, ctrl->target.priorityQueue[0]));
+    if(sat_old->el > 0.0f) {
+        pass = get_current_pass(sat_old, ctrl->qth, ctrl->t);
+        aos_old = pass->aos;
+        free_pass(pass);
     }
     else {
-        aos_old = find_aos(sat_old, ctrl->qth, ctrl->t, maxdt);
-    }
+        aos_old = sat_old->aos;
+    } 
 
     for(i=1; i < num_sats; i++){
         /* Gets the next satellite in the priority queue */
-        sat_new = g_slist_nth_data(ctrl->sats, ctrl->target.priorityQueue[i]);
-
-        /* Calculates the LOS and AOS of the new satellite */
-        //los = find_los(sat_new, ctrl->qth, ctrl->t, maxdt, 1.0*sat_cfg_get_int (SAT_CFG_INT_PRED_MIN_EL));
-        los = find_los(sat_new, ctrl->qth, ctrl->t, maxdt);
-        //aos = find_aos(sat_new, ctrl->qth, ctrl->t, maxdt,1.0*sat_cfg_get_int (SAT_CFG_INT_PRED_MIN_EL));
-        if(sat_new->el > 0.0){
-            aos = find_prev_aos(sat_new, ctrl->qth, ctrl->t, maxdt);
+        sat_new = SAT (g_slist_nth_data(ctrl->sats, ctrl->target.priorityQueue[i]));
+        if(sat_new->el > 0.0f) {
+            pass = get_current_pass(sat_new, ctrl->qth, ctrl->t);
+            aos = pass->aos;
+            los = pass->los;
+            free_pass(pass);
         }
         else {
-            aos = find_aos(sat_new, ctrl->qth, ctrl->t, maxdt);
+            aos = sat_new->aos;
+            los = sat_new->los;
         }
 
+        /* convert julian date to seconds */
+        dt = (guint) ((los - aos) * 86400);
+
         /* if we have the minimal communication time needded */
-        if((los - aos) > ctrl->target.minCommunication[ctrl->target.priorityQueue[i]]){
+        if(dt > ctrl->target.minCommunication[ctrl->target.priorityQueue[i]]){
             /* if the new satellite will set before the rise of the old one */
             if(aos_old > los){
                 sat_old = sat_new;
@@ -1846,7 +1850,13 @@ static void
         }
     }
     ctrl->target.targeting = sat_old;
-    ctrl->target.pass = get_pass(sat_old, ctrl->qth, ctrl->t, 3.0f);
+    if(sat_old->el > 0.0f) 
+        ctrl->target.pass = get_current_pass(sat_old, ctrl->qth, ctrl->t);
+    else 
+        ctrl->target.pass = get_pass(sat_old, ctrl->qth, ctrl->t, 3.0f);
+     
+
+    set_flipped_pass(ctrl);
 }
 
 static void

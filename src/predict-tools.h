@@ -95,7 +95,8 @@ void predict_calc (sat_t *sat, qth_t *qth, gdouble t);
 gdouble find_aos           (sat_t *sat, qth_t *qth, gdouble start, gdouble maxdt);
 //gdouble find_los           (sat_t *sat, qth_t *qth, gdouble start, gdouble maxdt, gdouble min_el);
 gdouble find_los           (sat_t *sat, qth_t *qth, gdouble start, gdouble maxdt);
-gdouble find_prev_aos      (sat_t *sat, qth_t *qth, gdouble start, gdouble minEl);
+//gdouble find_prev_aos      (sat_t *sat, qth_t *qth, gdouble start, gdouble minEl);
+gdouble find_prev_aos      (sat_t *sat, qth_t *qth, gdouble start);
 
 /* next events */
 pass_t *get_next_pass      (sat_t *sat, qth_t *qth, gdouble maxdt);

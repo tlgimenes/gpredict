@@ -344,7 +344,8 @@ find_los (sat_t *sat, qth_t *qth, gdouble start, gdouble maxdt)
  * current pass.
  */
 gdouble
-find_prev_aos (sat_t *sat, qth_t *qth, gdouble start, gdouble min_el)
+//find_prev_aos (sat_t *sat, qth_t *qth, gdouble start, gdouble min_el)
+find_prev_aos (sat_t *sat, qth_t *qth, gdouble start)
 {
     gdouble aostime = start;
 
@@ -361,7 +362,8 @@ find_prev_aos (sat_t *sat, qth_t *qth, gdouble start, gdouble min_el)
 
     }
 
-    while (sat->el >= min_el) {
+    //while (sat->el >= min_el) {
+    while (sat->el >= 0.0f) {
         aostime -= 0.0005; // 0.75 min
         predict_calc (sat, qth, aostime);
     }
@@ -528,7 +530,8 @@ get_pass_engine   (sat_t *sat_in, qth_t *qth, gdouble start, gdouble maxdt, gdou
         /*          t0); */
         if (aos > los) {
             // los is from an currently happening pass, find previous aos
-            aos = find_prev_aos(sat, qth, t0, 0.0f);
+ //           aos = find_prev_aos(sat, qth, t0, 0.0f);
+            aos = find_prev_aos(sat, qth, t0);
         }
 
         /* aos = 0.0 means no aos */
