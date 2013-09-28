@@ -116,6 +116,7 @@ predict_calc (sat_t *sat, qth_t *qth, gdouble t)
  *  \param qth Pointer to the QTH data.
  *  \param start The time where calculation should start.
  *  \param maxdt The upper time limit in days (0.0 = no limit)
+ *  \param min_el The minimal elevation necessary for AOS
  *  \return The time of the next AOS or 0.0 if the satellite has no AOS.
  *
  * This function finds the time of AOS for the first coming pass taking place
@@ -126,11 +127,11 @@ predict_calc (sat_t *sat, qth_t *qth, gdouble t)
  *
  */
 gdouble
+//find_aos (sat_t *sat, qth_t *qth, gdouble start, gdouble maxdt, gdouble min_el)
 find_aos (sat_t *sat, qth_t *qth, gdouble start, gdouble maxdt)
 {
     gdouble t = start;
     gdouble aostime = 0.0;
-
 
     /* make sure current sat values are
         in sync with the time
@@ -145,7 +146,9 @@ find_aos (sat_t *sat, qth_t *qth, gdouble start, gdouble maxdt)
     }
 
 
-    if (sat->el > 0.0)
+    //if (sat->el > min_el)
+    if (sat->el > 0.0f)
+        //t = find_los (sat, qth, start, maxdt, min_el) + 0.014; // +20 min
         t = find_los (sat, qth, start, maxdt) + 0.014; // +20 min
 
     /* invalid time (potentially returned by find_los) */
@@ -159,15 +162,18 @@ find_aos (sat_t *sat, qth_t *qth, gdouble start, gdouble maxdt)
     if (maxdt > 0.0) {
 
         /* coarse time steps */
-        while ((sat->el < -1.0) && (t <= (start + maxdt))) {
-            t -= 0.00035 * (sat->el * ((sat->alt / 8400.0) + 0.46) - 2.0);
+        //while ((sat->el < (-1.0 + min_el)) && (t <= (start + maxdt))) {
+        while ((sat->el < (-1.0)) && (t <= (start + maxdt))) {
+            //t -= 0.00035 * ((sat->el-min_el) * ((sat->alt / 8400.0) + 0.46) - 2.0);
+            t -= 0.00035 * ((sat->el) * ((sat->alt / 8400.0) + 0.46) - 2.0);
             predict_calc (sat, qth, t);
         }
 
         /* fine steps */
         while ((aostime == 0.0) && (t <= (start + maxdt))) {
 
-            if (fabs (sat->el) < 0.005) {
+            //if (fabs (sat->el) < (0.005 + min_el)) {
+            if (fabs (sat->el) < (0.005)) {
                 aostime = t;
             }
             else {
@@ -182,16 +188,19 @@ find_aos (sat_t *sat, qth_t *qth, gdouble start, gdouble maxdt)
     else {
 
         /* coarse time steps */
-        while (sat->el < -1.0) {
+        //while (sat->el < (-1.0 + min_el)) {
+        while (sat->el < (-1.0)) {
 
-            t -= 0.00035 * (sat->el * ((sat->alt / 8400.0) + 0.46) - 2.0);
+            //t -= 0.00035 * ((sat->el-min_el) * ((sat->alt / 8400.0) + 0.46) - 2.0);
+            t -= 0.00035 * ((sat->el) * ((sat->alt / 8400.0) + 0.46) - 2.0);
             predict_calc (sat, qth, t);
         }
 
         /* fine steps */
         while (aostime == 0.0) {
 
-            if (fabs (sat->el) < 0.005) {
+            //if (fabs (sat->el) < (0.005 + min_el)) {
+            if (fabs (sat->el) < (0.005 )) {
                 aostime = t;
             }
             else {
@@ -214,6 +223,7 @@ find_aos (sat_t *sat, qth_t *qth, gdouble start, gdouble maxdt)
  *  \param qth Pointer to the QTH data.
  *  \param start The time where calculation should start.
  *  \param maxdt The upper time limit in days (0.0 = no limit)
+ *  \param min_el The minimum elevation for the LOS
  *  \return The time of the next LOS or 0.0 if the satellite has no LOS.
  *
  * This function finds the time of LOS for the first coming pass taking place
@@ -226,6 +236,7 @@ find_aos (sat_t *sat, qth_t *qth, gdouble start, gdouble maxdt)
  *
  */
 gdouble
+//find_los (sat_t *sat, qth_t *qth, gdouble start, gdouble maxdt, gdouble min_el)
 find_los (sat_t *sat, qth_t *qth, gdouble start, gdouble maxdt)
 {
     gdouble t = start;
@@ -242,7 +253,9 @@ find_los (sat_t *sat, qth_t *qth, gdouble start, gdouble maxdt)
     }
 
 
-    if (sat->el < 0.0)
+    //if (sat->el < min_el)
+    if (sat->el < 0.0f)
+        //t = find_aos (sat, qth, start, maxdt, min_el) + 0.001; // +1.5 min
         t = find_aos (sat, qth, start, maxdt) + 0.001; // +1.5 min
 
     /* invalid time (potentially returned by find_aos) */
@@ -324,13 +337,14 @@ find_los (sat_t *sat, qth_t *qth, gdouble start, gdouble maxdt)
  *  \param sat The satellite to find AOS for.
  *  \param qth The ground station.
  *  \param start Start time, prefereably now.
+ *  \param min_el Minimun elevation for AOS
  *  \return The time of the previous AOS or 0.0 if the satellite has no AOS.
  *
  * This function can be used to find the AOS time in the past of the
  * current pass.
  */
 gdouble
-find_prev_aos (sat_t *sat, qth_t *qth, gdouble start)
+find_prev_aos (sat_t *sat, qth_t *qth, gdouble start, gdouble min_el)
 {
     gdouble aostime = start;
 
@@ -347,7 +361,7 @@ find_prev_aos (sat_t *sat, qth_t *qth, gdouble start)
 
     }
 
-    while (sat->el >= 0.0) {
+    while (sat->el >= min_el) {
         aostime -= 0.0005; // 0.75 min
         predict_calc (sat, qth, aostime);
     }
@@ -501,7 +515,9 @@ get_pass_engine   (sat_t *sat_in, qth_t *qth, gdouble start, gdouble maxdt, gdou
     while (!done) {
 
         /* Find los of next pass or of current pass */
+        //los = find_los (sat, qth, t0, maxdt, 0.0f); // See if a pass is ongoing
         los = find_los (sat, qth, t0, maxdt); // See if a pass is ongoing
+        //aos = find_aos (sat, qth, t0, start + maxdt - t0, 0.0f);
         aos = find_aos (sat, qth, t0, start + maxdt - t0);
         /* sat_log_log(SAT_LOG_LEVEL_INFO, "%s:%s:%d: found aos %f and los %f for t0=%f", */
         /*          __FILE__,  */
@@ -512,7 +528,7 @@ get_pass_engine   (sat_t *sat_in, qth_t *qth, gdouble start, gdouble maxdt, gdou
         /*          t0); */
         if (aos > los) {
             // los is from an currently happening pass, find previous aos
-            aos = find_prev_aos(sat, qth, t0);
+            aos = find_prev_aos(sat, qth, t0, 0.0f);
         }
 
         /* aos = 0.0 means no aos */

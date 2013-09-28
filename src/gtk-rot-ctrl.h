@@ -68,23 +68,21 @@ enum {
     N_COLUMN_PRIORITY
 };
 
-//blabla
-
 typedef struct _gtk_rot_ctrl      GtkRotCtrl;
 typedef struct _GtkRotCtrlClass   GtkRotCtrlClass;
 // Tiago's modification
 typedef struct _target_sat        TargetSat;
 
 // Tiago's modification
-// Always the first element is tracked !
 struct _target_sat
 {
     int numSatToTrack;              /*!< Number of satellites in the list */
     int *priorityQueue;             /*!< Index of next satellite to track */
     int *sats;                      /*!< Index of corresponding satellite in the priorityQueue */
-    float * minComunication;        /*!< Minimun communication time of the satellite */
-    sat_t* targeting;
-    pass_t* pass;
+    float * minCommunication;        /*!< Minimun communication time of the satellite */
+    float minElevation;             /*!< Minimun elevation to communicate with the satellite*/
+    sat_t *targeting;
+    pass_t *pass;
 };
 
 struct _gtk_rot_ctrl
@@ -102,6 +100,7 @@ struct _gtk_rot_ctrl
     GtkWidget *DevSel;
     GtkWidget *plot;    /*!< Polar plot widget */
     GtkWidget *LockBut;
+    GtkLabel *track_sat;
                         
     rotor_conf_t *conf;
     gdouble       t;  /*!< Time when sat data last has been updated. */

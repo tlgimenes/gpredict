@@ -983,7 +983,9 @@ gtk_sat_module_update_sat    (gpointer key, gpointer val, gpointer data)
            We use SAT_CFG_INT_PRED_LOOK_AHEAD for upper time limit
         */
         maxdt = (gdouble) sat_cfg_get_int (SAT_CFG_INT_PRED_LOOK_AHEAD);
+        //sat->aos = find_aos (sat, module->qth, daynum, maxdt, 0.0f);
         sat->aos = find_aos (sat, module->qth, daynum, maxdt);
+        //sat->los = find_los (sat, module->qth, daynum, maxdt, 0.0f);
         sat->los = find_los (sat, module->qth, daynum, maxdt);
 
     } 
@@ -1027,10 +1029,12 @@ gtk_sat_module_update_sat    (gpointer key, gpointer val, gpointer data)
     if (sat->aos > 0 && sat->aos < daynum) {
         maxdt = (gdouble) sat_cfg_get_int (SAT_CFG_INT_PRED_LOOK_AHEAD);
         sat->aos = find_aos (sat, module->qth, daynum, maxdt);
+   //     sat->aos = find_aos (sat, module->qth, daynum, maxdt, 0.0f);
     } 
     if (sat->los > 0 && sat->los < daynum) {
         maxdt = (gdouble) sat_cfg_get_int (SAT_CFG_INT_PRED_LOOK_AHEAD);
         sat->los = find_los (sat, module->qth, daynum, maxdt);
+   //     sat->los = find_los (sat, module->qth, daynum, maxdt, 0.0f);
     }
 
     predict_calc( sat, module->qth, daynum);
