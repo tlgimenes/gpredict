@@ -82,6 +82,8 @@ static GtkWidget *create_plot_widget (GtkRotCtrl *ctrl);
 static void store_sats (gpointer key, gpointer value, gpointer user_data);
 
 static void sat_selected_cb (GtkCellRendererToggle *cell_renderer, gchar *path_str, gpointer user_data);
+static void sat_increased_priority_cb(GtkButton *button, gpointer data);
+static void sat_decreased_priority_cb(GtkButton *button, gpointer data);
 static void sat_changed_minCommunication_cb(GtkCellRendererText *cellrenderertext, gchar *arg1, gchar *arg2, gpointer user_data);
 static void track_toggle_cb (GtkToggleButton *button, gpointer data);
 static void delay_changed_cb (GtkSpinButton *spin, gpointer data);
@@ -490,7 +492,7 @@ static
 static
         GtkWidget *create_target_widgets (GtkRotCtrl *ctrl)
 {
-    GtkWidget *frame,*table,*satsel;
+    GtkWidget *frame,*table,*satsel, *high_but, *low_but;
     GtkTreeViewColumn *sat_nickname, *checkbox, *minCommunication;
     GtkCellRenderer *rend_sat_nickname, *rend_checkbox, *rend_minCommunication;
     GtkWidget *tree;
@@ -503,7 +505,9 @@ static
     gtk_table_set_col_spacings (GTK_TABLE (table), 5);
     gtk_table_set_row_spacings (GTK_TABLE (table), 5);
 
-    /* sat selector */
+    /* 
+     * sat selector 
+     */
     ctrl->checkSatsList =  gtk_list_store_new(N_COLUMN, G_TYPE_STRING, G_TYPE_BOOLEAN, G_TYPE_STRING);
     
     // set elements to store in the list
@@ -537,7 +541,6 @@ static
     gtk_tree_view_append_column(GTK_TREE_VIEW(tree), sat_nickname);
     gtk_tree_view_append_column(GTK_TREE_VIEW(tree), checkbox);
     gtk_tree_view_append_column(GTK_TREE_VIEW(tree), minCommunication);
- //   gtk_tree_view_column_set_clickable(checkbox,"clickable");
 
     // Sets the viewmode
     gtk_tree_view_set_model(GTK_TREE_VIEW(tree), GTK_TREE_MODEL(ctrl->checkSatsList));
@@ -552,9 +555,11 @@ static
     g_signal_connect (rend_checkbox, "toggled", G_CALLBACK (sat_selected_cb), ctrl);
     g_signal_connect (rend_minCommunication, "edited", G_CALLBACK(sat_changed_minCommunication_cb), ctrl);
 
-    /* satellite priority */
+    /*
+     * satellite priority Column
+     */
     ctrl->prioritySatsList =  gtk_list_store_new(N_COLUMN_PRIORITY, G_TYPE_STRING);
-    tree = gtk_tree_view_new_with_model(GTK_TREE_MODEL(ctrl->prioritySatsList));
+    ctrl->prioritySats = gtk_tree_view_new_with_model(GTK_TREE_MODEL(ctrl->prioritySatsList));
     
     // Create render
     rend_sat_nickname = gtk_cell_renderer_text_new();
@@ -563,17 +568,39 @@ static
     sat_nickname = gtk_tree_view_column_new_with_attributes("Change Priority of Satellite", rend_sat_nickname, "text", TEXT_COLUMN, NULL);
     
     // Appends the columns
-    gtk_tree_view_append_column(GTK_TREE_VIEW(tree), sat_nickname);
+    gtk_tree_view_append_column(GTK_TREE_VIEW(ctrl->prioritySats), sat_nickname);
     
     // Sets the viewmode
-    gtk_tree_view_set_model(GTK_TREE_VIEW(tree), GTK_TREE_MODEL(ctrl->prioritySatsList));
+    gtk_tree_view_set_model(GTK_TREE_VIEW(ctrl->prioritySats), GTK_TREE_MODEL(ctrl->prioritySatsList));
     
     // Creates a scrolling window 
     satsel = gtk_scrolled_window_new(NULL, NULL);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(satsel), GTK_POLICY_NEVER, GTK_POLICY_NEVER); 
-    gtk_container_add(GTK_CONTAINER(satsel), tree);
-    gtk_table_attach_defaults(GTK_TABLE (table), satsel, 3, 4, 0, 6);
+    gtk_container_add(GTK_CONTAINER(satsel), ctrl->prioritySats);
+    gtk_table_attach_defaults(GTK_TABLE (table), satsel, 3, 5, 1, 6);
     
+    /*
+     * Change Priority Button
+     */
+    // Create UP Button
+    high_but = gpredict_hstock_button (GTK_STOCK_GO_UP, NULL,
+                                     _("Increase the priority of the selected satellite."));
+    // Callback function
+    g_signal_connect (high_but, "clicked", G_CALLBACK (sat_increased_priority_cb), ctrl);
+    gtk_table_attach (GTK_TABLE (table), high_but, 3, 4, 0, 1,
+                      GTK_SHRINK, GTK_SHRINK, 0, 0);
+
+    gtk_table_attach (GTK_TABLE (table), high_but, 3, 4, 0, 1,
+                      GTK_SHRINK, GTK_SHRINK, 0, 0);
+    // Create DOWN Button
+    low_but = gpredict_hstock_button (GTK_STOCK_GO_DOWN, NULL,
+                                     _("Decrease the priority of the selected satellite."));
+    // Callback function
+    g_signal_connect (low_but, "clicked", G_CALLBACK (sat_decreased_priority_cb), ctrl);
+    gtk_table_attach (GTK_TABLE (table), low_but, 4, 5, 0, 1,
+                      GTK_SHRINK, GTK_SHRINK, 0, 0);
+
+
     frame = gtk_frame_new (_("Target"));
     gtk_container_add (GTK_CONTAINER (frame), table);
     
@@ -670,7 +697,9 @@ static GtkWidget *
 
     ctrl->track_sat = gtk_label_new (_(" --- "));
     gtk_misc_set_alignment (GTK_MISC (ctrl->track_sat), 1.0, 0.5);
-    gtk_table_attach_defaults (GTK_TABLE (table), ctrl->track_sat, 1, 2, 1, 2);
+    gtk_table_attach_defaults (GTK_TABLE (table), ctrl->track_sat, 1, 3, 1, 2);
+    gtk_widget_set_tooltip_text (ctrl->track_sat, 
+                                                _("Current target object"));
 
     /* Azimuth */
     label = gtk_label_new (_("Az:"));
@@ -797,8 +826,7 @@ static void
     GtkRotCtrl *ctrl = GTK_ROT_CTRL (data);
     GtkTreePath *path = gtk_tree_path_new_from_string (path_str);
     sat_t * sat;
-    char *path_str_priority;
-    unsigned int ndigits, index_priority_list;
+    gint index_priority_list;
     GtkTreeIter iter;
     gboolean enable;
     gint i;
@@ -810,6 +838,7 @@ static void
     gtk_list_store_set(ctrl->checkSatsList, &iter, TOGGLE_COLUMN, enable, -1);
 
     sscanf(path_str, " %d ",&i);
+    /* Add sat to priority queue */
     if(enable && i >= 0){
         /* Show new added satellite in the priority queue */
         sat = SAT (g_slist_nth_data (ctrl->sats, i));
@@ -818,29 +847,25 @@ static void
             gtk_list_store_set(ctrl->prioritySatsList, &iter, TEXT_COLUMN, sat->nickname, -1);
             /* Adds the satellite to the priorityQueue */
             append_elem_priority_queue(ctrl, i);
-        }
+        } 
     }
     else if(!enable && i >= 0){
         index_priority_list = get_elem_index_priority_queue(ctrl, i);
         remove_elem_priority_queue(ctrl, i);
         // Gets the new iter
-        ndigits = log10(index_priority_list+1)+1;
-        path_str_priority = malloc(sizeof(char)*ndigits);
-        sprintf(path_str_priority, "%d", index_priority_list);
         gtk_tree_path_free (path);
-        path = gtk_tree_path_new_from_string (path_str_priority);
+        path = gtk_tree_path_new_from_indices(index_priority_list ,-1);
         gtk_tree_model_get_iter (GTK_TREE_MODEL(ctrl->prioritySatsList), &iter, path);
         // Removes the row
         gtk_list_store_remove(ctrl->prioritySatsList, &iter);
-        free(path_str_priority);
     }
 
     /* Updates the next target*/
     update_tracked_elem(ctrl);
 
-    if(ctrl->target.targeting != NULL){
-        /* update next pass */
-     /*   if (ctrl->target.targeting != NULL)
+ /*   if(ctrl->target.targeting != NULL){
+         update next pass 
+        if (ctrl->target.targeting != NULL)
             free_pass (ctrl->target.pass);
 
         if (ctrl->target.targeting->el > 0.0)
@@ -848,16 +873,78 @@ static void
         else
             ctrl->target.pass = get_pass (ctrl->target.targeting, ctrl->qth, ctrl->t, 3.0);
 
-        set_flipped_pass(ctrl);*/
+        set_flipped_pass(ctrl);
 
         if(ctrl->plot != NULL){
-            /* Plots a new pass only if there is a new element added */
+             Plots a new pass only if there is a new element added 
             gtk_polar_plot_set_pass (GTK_POLAR_PLOT (ctrl->plot), ctrl->target.pass);
         }
-    }
+    }*/
 
     /* Frees the path */
     gtk_tree_path_free (path);
+}
+
+static void
+        sat_increased_priority_cb(GtkButton *button, gpointer data)
+{
+    GtkRotCtrl *ctrl = GTK_ROT_CTRL (data);
+    GtkTreeSelection *selection;
+    GtkTreeModel     *model = GTK_TREE_MODEL(ctrl->prioritySatsList);
+    GtkTreeIter      *iter1, *iter2, aux;
+    gboolean          haveselection = FALSE; /* this flag is set to TRUE if there is a selection */
+    gint i, j;
+
+    iter1 = malloc (sizeof(GtkTreeIter));
+    iter2 = malloc (sizeof(GtkTreeIter));
+
+    selection = gtk_tree_view_get_selection (GTK_TREE_VIEW(ctrl->prioritySats));
+    haveselection = gtk_tree_selection_get_selected (selection, &model, iter1);
+    gtk_tree_model_get_iter_first(model, iter2);
+
+    if (haveselection && iter1->user_data != iter2->user_data) {
+        while(iter1->user_data != iter2->user_data){
+            aux = *iter2;
+            gtk_tree_model_iter_next (model, iter2);
+        }
+        iter2 = &aux;
+
+        sscanf(gtk_tree_model_get_string_from_iter (model, iter1), "%d", &i);
+        sscanf(gtk_tree_model_get_string_from_iter (model, iter2), "%d", &j);
+
+        gtk_list_store_swap (ctrl->prioritySatsList, iter1, iter2);
+        swap_elem_priority_queue (ctrl, i, j);
+        update_tracked_elem (ctrl);
+    }
+}
+
+static void
+        sat_decreased_priority_cb(GtkButton *button, gpointer data)
+{
+    GtkRotCtrl *ctrl = GTK_ROT_CTRL (data);
+    GtkTreeSelection *selection;
+    GtkTreeModel     *model = GTK_TREE_MODEL(ctrl->prioritySatsList);
+    GtkTreeIter      *iter1, *iter2;
+    gboolean          haveselection = FALSE; /* this flag is set to TRUE if there is a selection */
+    gint i, j;
+
+    iter1 = malloc (sizeof(GtkTreeIter));
+    iter2 = malloc (sizeof(GtkTreeIter));
+
+    selection = gtk_tree_view_get_selection (GTK_TREE_VIEW(ctrl->prioritySats));
+    haveselection = gtk_tree_selection_get_selected (selection, &model, iter1);
+    haveselection = gtk_tree_selection_get_selected (selection, &model, iter2);
+
+    if (haveselection) {
+        if(!gtk_tree_model_iter_next (model, iter2)) return;
+
+        sscanf(gtk_tree_model_get_string_from_iter (model, iter1), "%d", &i);
+        sscanf(gtk_tree_model_get_string_from_iter (model, iter2), "%d", &j);
+
+        gtk_list_store_swap (ctrl->prioritySatsList, iter1, iter2);
+        swap_elem_priority_queue(ctrl, i, j);
+        update_tracked_elem (ctrl);
+    }
 }
 
 /** \brief Set new minimal time of communication to selected sattelite
@@ -1711,25 +1798,7 @@ static void
 
     ctrl->target.numSatToTrack++;
     n = ctrl->target.numSatToTrack;
-    if(n == 1){
-        /* update targeting satellite */
-        ctrl->target.targeting = SAT (g_slist_nth_data (ctrl->sats, i));
-        /* update next pass */
-        if (ctrl->target.targeting != NULL)
-            free_pass (ctrl->target.pass);
 
-        if (ctrl->target.targeting->el > 0.0)
-            ctrl->target.pass = get_current_pass (ctrl->target.targeting, ctrl->qth, ctrl->t);
-        else
-            ctrl->target.pass = get_pass (ctrl->target.targeting, ctrl->qth, ctrl->t, 3.0);
-
-        set_flipped_pass(ctrl);
-
-        if(ctrl->plot != NULL){
-            /* Plots a new pass only if there is a new element added */
-            gtk_polar_plot_set_pass (GTK_POLAR_PLOT (ctrl->plot), ctrl->target.pass);
-        }
-    }
     ctrl->target.priorityQueue[n-1] = i;
     ctrl->target.sats[i] = n-1;
 }
@@ -1758,32 +1827,21 @@ static void
             ctrl->target.targeting = NULL;
             ctrl->target.pass = NULL;
         }
-        else{
-            /* update targeting satellite */
-            ctrl->target.targeting = SAT (g_slist_nth_data (ctrl->sats, ctrl->target.priorityQueue[0]));
-            /* update next pass */
-            if (ctrl->target.targeting != NULL)
-                free_pass (ctrl->target.pass);
-
-            if (ctrl->target.targeting->el > 0.0)
-                ctrl->target.pass = get_current_pass (ctrl->target.targeting, ctrl->qth, ctrl->t);
-            else
-                ctrl->target.pass = get_pass (ctrl->target.targeting, ctrl->qth, ctrl->t, 3.0);
-
-            set_flipped_pass(ctrl);
-
-            if(ctrl->plot != NULL){
-                /* Plots a new pass only if there is a new element added */
-                gtk_polar_plot_set_pass (GTK_POLAR_PLOT (ctrl->plot), ctrl->target.pass);
-            }
-        }
     }
 }
 
 static void 
         swap_elem_priority_queue(GtkRotCtrl* ctrl, int i, int j)
 {
-    /* Finish CODE here */
+    int aux;
+
+    ctrl->target.sats[ctrl->target.priorityQueue[i]] = j;
+    ctrl->target.sats[ctrl->target.priorityQueue[j]] = i;
+
+    aux = ctrl->target.priorityQueue[j];
+    ctrl->target.priorityQueue[j] = ctrl->target.priorityQueue[i];
+    ctrl->target.priorityQueue[i] = aux;
+
 }
 
 static int get_elem_index_priority_queue(GtkRotCtrl *ctrl, int i){
@@ -1801,13 +1859,12 @@ static void
         next_elem_to_track(GtkRotCtrl* ctrl)
 {
     int i, num_sats;
-    gdouble min_el, aos_old, aos, los;
+    gdouble aos_old, aos, los;
     sat_t *sat_old, *sat_new;
     pass_t *pass;
     guint dt;
 
     /* set variables */
-    min_el = sat_cfg_get_int (SAT_CFG_INT_PRED_MIN_EL);
     num_sats = ctrl->target.numSatToTrack;
 
     if(num_sats <= 0)
@@ -1865,9 +1922,15 @@ static void
 static void
         update_tracked_elem(GtkRotCtrl * ctrl)
 {
-    if(ctrl->target.targeting != NULL){
+    if(ctrl->target.numSatToTrack > 0){
         next_elem_to_track(ctrl);
-        gtk_label_set_text(ctrl->track_sat, ctrl->target.targeting->nickname);
+        
+        gtk_label_set_text(ctrl->track_sat, ctrl->target.targeting->nickname); 
+        
+        if(ctrl->plot != NULL){
+            /* Plots a new pass only if there is a new element added */
+            gtk_polar_plot_set_pass (GTK_POLAR_PLOT (ctrl->plot), ctrl->target.pass);
+        }
     }
     else{
         gtk_label_set_text(ctrl->track_sat, " --- ");

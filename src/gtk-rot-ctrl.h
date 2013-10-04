@@ -100,14 +100,15 @@ struct _gtk_rot_ctrl
     GtkWidget *DevSel;
     GtkWidget *plot;    /*!< Polar plot widget */
     GtkWidget *LockBut;
-    GtkLabel *track_sat;
+    GtkWidget *track_sat;
                         
     rotor_conf_t *conf;
     gdouble       t;  /*!< Time when sat data last has been updated. */
     
     /* satellites */
-    GtkListStore *checkSatsList;    /*!< List of sats in current module */
+    GtkWidget *prioritySats;
     GtkListStore *prioritySatsList;
+    GtkListStore *checkSatsList;    /*!< List of sats in current module */
     GSList *sats;       /*!< List of sats in parent module */
     // Tiago's modification
     TargetSat target;
