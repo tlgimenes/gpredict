@@ -48,11 +48,11 @@ struct _target_sat
     pass_t *pass;
 };
 
-static TargetSat *new_priority_queue(int num_sats);
-static void append_elem_priority_queue(TargetSat* target, int i);
-static void remove_elem_priority_queue(TargetSat* target, int i);
-static void swap_elem_priority_queue(TargetSat* target, int i, int j);
-static int get_elem_index_priority_queue(TargetSat *target, int i);
+TargetSat *new_priority_queue(int num_sats);
+void append_elem_priority_queue(TargetSat* target, int i);
+void remove_elem_priority_queue(TargetSat* target, int i);
+void swap_elem_priority_queue(TargetSat* target, int i, int j);
+int get_elem_index_priority_queue(TargetSat *target, int i);
 
 
 #ifdef __cplusplus

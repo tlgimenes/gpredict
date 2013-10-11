@@ -27,6 +27,7 @@ gpredict_SOURCES = \
     sgpsdp/sgp_time.c \
     sgpsdp/solar.c \
     about.c about.h \
+	target-sat.c target-sat.h \
     compat.c compat.h config-keys.h \
     first-time.c first-time.h \
     gpredict-help.c gpredict-help.h \

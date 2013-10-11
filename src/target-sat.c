@@ -26,8 +26,8 @@
   along with this program; if not, visit http://www.fsf.org/
 */
 
-#include "sat-log.h"
 #include "target-sat.h"
+#include "sat-log.h"
 
 #ifdef HAVE_CONFIG_H
 #  include <build-config.h>
@@ -48,7 +48,7 @@
 #define FMTSTR "%7.2f\302\260"
 #define MAX_ERROR_COUNT 5
 
-static TargetSat *
+TargetSat *
         new_priority_queue(int num_sats)
 {
     TargetSat *t = malloc(sizeof(TargetSat));
@@ -58,10 +58,13 @@ static TargetSat *
     t->minCommunication = malloc(sizeof(float)*num_sats);
     t->priorityQueue = malloc(sizeof(int)*num_sats);
 
+    t->targeting = NULL;
+    t->pass = NULL;
+
     return t;
 }
 
-static void
+void
         append_elem_priority_queue(TargetSat *target, int i)
 {
     int n;
@@ -73,7 +76,7 @@ static void
     target->sats[i] = n-1;
 }
 
-static void
+void
         remove_elem_priority_queue(TargetSat* target, int i)
 {
     int j = target->sats[i];
@@ -100,7 +103,7 @@ static void
     }
 }
 
-static void 
+void 
        swap_elem_priority_queue(TargetSat* target, int i, int j)
 {
     int aux;
@@ -114,7 +117,7 @@ static void
 
 }
 
-static int get_elem_index_priority_queue(TargetSat *target, int i){
+int get_elem_index_priority_queue(TargetSat *target, int i){
     int j = target->sats[i];
 
     if(j == NOT_IN_PRIORITY_QUEUE){
