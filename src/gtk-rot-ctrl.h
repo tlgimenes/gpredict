@@ -34,6 +34,7 @@
 #include "sgpsdp/sgp4sdp4.h"
 #include "gtk-sat-module.h"
 #include "rotor-conf.h"
+#include "target-sat.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -53,37 +54,9 @@ extern "C" {
 
 #define IS_GTK_ROT_CTRL(obj)       G_TYPE_CHECK_INSTANCE_TYPE (obj, gtk_rot_ctrl_get_type ())
 
-#define NOT_IN_PRIORITY_QUEUE -1
-
-// Used to do the track widget    
-enum {
-   TEXT_COLUMN,
-   TOGGLE_COLUMN,
-   QNT_COLUMN,
-   N_COLUMN
-};
-
-enum {
-    TEXT_COLUMN_PRIORITY,
-    N_COLUMN_PRIORITY
-};
-
 typedef struct _gtk_rot_ctrl      GtkRotCtrl;
 typedef struct _GtkRotCtrlClass   GtkRotCtrlClass;
-// Tiago's modification
-typedef struct _target_sat        TargetSat;
 
-// Tiago's modification
-struct _target_sat
-{
-    int numSatToTrack;              /*!< Number of satellites in the list */
-    int *priorityQueue;             /*!< Index of next satellite to track */
-    int *sats;                      /*!< Index of corresponding satellite in the priorityQueue */
-    float * minCommunication;        /*!< Minimun communication time of the satellite */
-    float minElevation;             /*!< Minimun elevation to communicate with the satellite*/
-    sat_t *targeting;
-    pass_t *pass;
-};
 
 struct _gtk_rot_ctrl
 {
@@ -111,7 +84,7 @@ struct _gtk_rot_ctrl
     GtkListStore *checkSatsList;    /*!< List of sats in current module */
     GSList *sats;       /*!< List of sats in parent module */
     // Tiago's modification
-    TargetSat target;
+    TargetSat *target;
     qth_t  *qth;        /*!< The QTH for this module */
     gboolean flipped;   /*!< Whether the current pass loaded is a flip pass or not */
 
@@ -135,8 +108,6 @@ struct _GtkRotCtrlClass
 {
     GtkVBoxClass parent_class;
 };
-
-
 
 GType      gtk_rot_ctrl_get_type (void);
 GtkWidget* gtk_rot_ctrl_new      (GtkSatModule *module);
