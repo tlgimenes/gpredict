@@ -35,6 +35,7 @@
 #include "gtk-sat-module.h"
 #include "radio-conf.h"
 #include "trsp-conf.h"
+#include "target-sat.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -76,7 +77,11 @@ struct _gtk_rig_ctrl
     /* target status labels*/
     GtkWidget *SatAz,*SatEl,*SatCnt;
     GtkWidget *SatRng,*SatRngRate,*SatDop;
-   
+    GtkWidget *track_sat;
+    GtkWidget *prioritySats;
+    GtkListStore *prioritySatsList;
+    GtkListStore *checkSatsList;
+    
     /* other widgets */
     GtkWidget *TrspSel;  /*!< Transponder selector */
     GtkWidget *DevSel;   /*!< Device selector */
@@ -90,8 +95,9 @@ struct _gtk_rig_ctrl
     gboolean      trsplock;  /*!< Flag indicating whether uplink and downlink are lockled */
     
     GSList *sats;       /*!< List of sats in parent module */
-    sat_t  *target;     /*!< Target satellite */
-    pass_t *pass;       /*!< Next pass of target satellite */
+    TargetSat *target;
+ //   sat_t  *target;     /*!< Target satellite */
+ //   pass_t *pass;       /*!< Next pass of target satellite */
     qth_t  *qth;        /*!< The QTH for this module */
     
     guint delay;       /*!< Timeout delay. */

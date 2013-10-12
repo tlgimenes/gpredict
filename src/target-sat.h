@@ -38,6 +38,18 @@ extern "C" {
 
 typedef struct _target_sat  TargetSat;
 
+enum {
+   TEXT_COLUMN,
+   TOGGLE_COLUMN,
+   QNT_COLUMN,
+   N_COLUMN
+};
+
+enum {
+    TEXT_COLUMN_PRIORITY,
+    N_COLUMN_PRIORITY
+};
+
 struct _target_sat
 {
     int numSatToTrack;              /*!< Number of satellites in the list */
@@ -53,7 +65,6 @@ void append_elem_priority_queue(TargetSat* target, int i);
 void remove_elem_priority_queue(TargetSat* target, int i);
 void swap_elem_priority_queue(TargetSat* target, int i, int j);
 int get_elem_index_priority_queue(TargetSat *target, int i);
-
 
 #ifdef __cplusplus
 }

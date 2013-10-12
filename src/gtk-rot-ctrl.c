@@ -118,17 +118,6 @@ static GdkColor ColWhite = { 0, 0xFFFF, 0xFFFF, 0xFFFF};
 static GdkColor ColRed =   { 0, 0xFFFF, 0, 0};
 static GdkColor ColGreen = {0, 0, 0xFFFF, 0};
 
-enum {
-   TEXT_COLUMN,
-   TOGGLE_COLUMN,
-   QNT_COLUMN,
-   N_COLUMN
-};
-
-enum {
-    TEXT_COLUMN_PRIORITY,
-    N_COLUMN_PRIORITY
-};
 
 GType
         gtk_rot_ctrl_get_type ()
@@ -526,7 +515,7 @@ static
 
     // Creates a scrolling window 
     satsel = gtk_scrolled_window_new(NULL, NULL);
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(satsel), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(satsel), GTK_POLICY_NEVER, GTK_POLICY_NEVER);
     gtk_container_add(GTK_CONTAINER(satsel), tree);
     gtk_table_attach_defaults(GTK_TABLE (table), satsel, 0, 3, 0, 6);
     
@@ -554,7 +543,7 @@ static
     
     // Creates a scrolling window 
     satsel = gtk_scrolled_window_new(NULL, NULL);
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(satsel), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC); 
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(satsel), GTK_POLICY_NEVER, GTK_POLICY_NEVER); 
     gtk_container_add(GTK_CONTAINER(satsel), ctrl->prioritySats);
     gtk_table_attach_defaults(GTK_TABLE (table), satsel, 3, 5, 1, 6);
     
@@ -804,10 +793,10 @@ static void
 {
     GtkRotCtrl *ctrl = GTK_ROT_CTRL (data);
     GtkTreePath *path = gtk_tree_path_new_from_string (path_str);
-    sat_t * sat;
     gint index_priority_list;
     GtkTreeIter iter;
     gboolean enable;
+    sat_t * sat;
     gint i;
 
     gtk_tree_model_get_iter (GTK_TREE_MODEL(ctrl->checkSatsList), &iter, path);
@@ -1767,11 +1756,12 @@ static inline void set_flipped_pass (GtkRotCtrl* ctrl){
 
 }
 
-static void
-        next_elem_to_track(GtkRotCtrl* ctrl)
+    static void
+next_elem_to_track(GtkRotCtrl* ctrl)
 {
     int i, num_sats;
-    gdouble aos_old, aos, los;
+    gdouble aos_old, los_old, aos, los;
+    gboolean trackable_sat = FALSE;
     sat_t *sat_old, *sat_new;
     pass_t *pass;
     guint dt;
@@ -1781,21 +1771,34 @@ static void
 
     if(num_sats <= 0)
         sat_log_log (SAT_LOG_LEVEL_ERROR,
-                     _("%s:%d: Error tracking new satellite"),
-                     __FILE__, __LINE__);
+                _("%s:%d: Error tracking new satellite"),
+                __FILE__, __LINE__);
 
-    /* Gets the first satellite of the priority queue */
-    sat_old = SAT (g_slist_nth_data(ctrl->sats, ctrl->target->priorityQueue[0]));
-    if(sat_old->el > 0.0f) {
-        pass = get_current_pass(sat_old, ctrl->qth, ctrl->t);
-        aos_old = pass->aos;
-        free_pass(pass);
+    /* Gets the first possible satellite of the priority queue */
+    for(i=0; i < num_sats; i++){
+        sat_old = SAT (g_slist_nth_data(ctrl->sats, ctrl->target->priorityQueue[i]));
+        if(sat_old->el > 0.0f) {
+            pass = get_current_pass(sat_old, ctrl->qth, ctrl->t);
+            aos_old = pass->aos;
+            los_old = pass->los;
+            free_pass(pass);
+        }
+        else {
+            aos_old = sat_old->aos;
+            los_old = sat_old->los;
+        } 
+
+        /* convert julian date to seconds */
+        dt = (guint) ((los_old - aos_old) * 86400);
+
+        /* if we have the minimal communication time needded */
+        if(dt > ctrl->target->minCommunication[ctrl->target->priorityQueue[i]]){
+            trackable_sat = TRUE;
+            break;
+        }
     }
-    else {
-        aos_old = sat_old->aos;
-    } 
 
-    for(i=1; i < num_sats; i++){
+    for(; i < num_sats; i++){
         /* Gets the next satellite in the priority queue */
         sat_new = SAT (g_slist_nth_data(ctrl->sats, ctrl->target->priorityQueue[i]));
         if(sat_new->el > 0.0f) {
@@ -1821,23 +1824,29 @@ static void
             }
         }
     }
-    ctrl->target->targeting = sat_old;
-    if(sat_old->el > 0.0f) 
-        ctrl->target->pass = get_current_pass(sat_old, ctrl->qth, ctrl->t);
-    else 
-        ctrl->target->pass = get_pass(sat_old, ctrl->qth, ctrl->t, 3.0f);
-     
-
-    set_flipped_pass(ctrl);
+    if(trackable_sat == TRUE){
+        ctrl->target->targeting = sat_old;
+        if(sat_old->el > 0.0f) 
+            ctrl->target->pass = get_current_pass(sat_old, ctrl->qth, ctrl->t);
+        else 
+            ctrl->target->pass = get_pass(sat_old, ctrl->qth, ctrl->t, 3.0f);
+        set_flipped_pass(ctrl);
+    }
+    else {
+        ctrl->target->targeting = NULL;
+        ctrl->target->pass = NULL;
+    }
 }
 
-static void
-        update_tracked_elem(GtkRotCtrl * ctrl)
+    static void
+update_tracked_elem(GtkRotCtrl * ctrl)
 {
     if(ctrl->target->numSatToTrack > 0){
         next_elem_to_track(ctrl);
-        
-        gtk_label_set_text(ctrl->track_sat, ctrl->target->targeting->nickname); 
+ 
+    }
+    if(ctrl->target->targeting != NULL){
+        gtk_label_set_text((GtkLabel*)ctrl->track_sat, ctrl->target->targeting->nickname); 
         
         if(ctrl->plot != NULL){
             /* Plots a new pass only if there is a new element added */
@@ -1845,6 +1854,6 @@ static void
         }
     }
     else{
-        gtk_label_set_text(ctrl->track_sat, " --- ");
+        gtk_label_set_text((GtkLabel*)ctrl->track_sat, " --- ");
     }
 }

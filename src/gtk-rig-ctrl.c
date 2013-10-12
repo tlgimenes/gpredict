@@ -86,7 +86,10 @@ static GtkWidget *create_conf_widgets (GtkRigCtrl *ctrl);
 static GtkWidget *create_count_down_widgets (GtkRigCtrl *ctrl);
 
 /* callback functions */
-static void sat_selected_cb (GtkComboBox *satsel, gpointer data);
+static void sat_selected_cb (GtkCellRendererToggle *cell_renderer, gchar *path_str, gpointer data);
+static void sat_increased_priority_cb(GtkButton *button, gpointer data);
+static void sat_decreased_priority_cb(GtkButton *button, gpointer data);
+static void sat_changed_minCommunication_cb(GtkCellRendererText *cellrenderertext, gchar *arg1, gchar *arg2, gpointer data);
 static void track_toggle_cb (GtkToggleButton *button, gpointer data);
 static void delay_changed_cb (GtkSpinButton *spin, gpointer data);
 static void primary_rig_selected_cb (GtkComboBox *box, gpointer data);
@@ -100,6 +103,9 @@ static void downlink_changed_cb (GtkFreqKnob *knob, gpointer data);
 static void uplink_changed_cb (GtkFreqKnob *knob, gpointer data);
 static gboolean key_press_cb (GtkWidget *widget, GdkEventKey *pKey, gpointer data);
 static void manage_ptt_event (GtkRigCtrl *ctrl);
+
+/* Targeting functions */
+static void update_tracked_elem(GtkRigCtrl * ctrl);
 
 /* radio control functions */
 static void exec_rx_cycle (GtkRigCtrl *ctrl);
@@ -202,7 +208,6 @@ static void gtk_rig_ctrl_init (GtkRigCtrl *ctrl)
 {
     ctrl->sats = NULL;
     ctrl->target = NULL;
-    ctrl->pass = NULL;
     ctrl->qth = NULL;
     ctrl->conf = NULL;
     ctrl->conf2 = NULL;
@@ -268,6 +273,7 @@ GtkWidget *gtk_rig_ctrl_new (GtkSatModule *module)
 {
     GtkWidget *widget;
     GtkWidget *table;
+    guint num_sats;
     
     /* check that we have rig conf */
     if (!have_conf()) {
@@ -283,17 +289,19 @@ GtkWidget *gtk_rig_ctrl_new (GtkSatModule *module)
     /* store satellites */
     g_hash_table_foreach (module->satellites, store_sats, widget);
     
-    GTK_RIG_CTRL (widget)->target = SAT (g_slist_nth_data (GTK_RIG_CTRL (widget)->sats, 0));
+    num_sats = g_slist_length (GTK_RIG_CTRL (widget)->sats);
+    GTK_RIG_CTRL (widget)->target = new_priority_queue(num_sats);
+    //GTK_RIG_CTRL (widget)->target = SAT (g_slist_nth_data (GTK_RIG_CTRL (widget)->sats, 0));
     
     /* store QTH */
     GTK_RIG_CTRL (widget)->qth = module->qth;
     
-    if (GTK_RIG_CTRL(widget)->target !=NULL) {
+    /*if (GTK_RIG_CTRL(widget)->target !=NULL) {*/
         /* get next pass for target satellite */
-        GTK_RIG_CTRL (widget)->pass = get_next_pass (GTK_RIG_CTRL (widget)->target,
+/*        GTK_RIG_CTRL (widget)->pass = get_next_pass (GTK_RIG_CTRL (widget)->target,
                                                      GTK_RIG_CTRL (widget)->qth,
                                                      3.0);
-    }
+    }*/
     /* initialise custom colors */
     gdk_rgb_find_color (gtk_widget_get_colormap (widget), &ColBlack);
     gdk_rgb_find_color (gtk_widget_get_colormap (widget), &ColWhite);
@@ -301,7 +309,7 @@ GtkWidget *gtk_rig_ctrl_new (GtkSatModule *module)
     gdk_rgb_find_color (gtk_widget_get_colormap (widget), &ColGreen);
 
     /* create contents */
-    table = gtk_table_new (3, 2, FALSE);
+    table = gtk_table_new (4, 2, FALSE);
     gtk_table_set_row_spacings (GTK_TABLE (table), 5);
     gtk_table_set_col_spacings (GTK_TABLE (table), 5);
     gtk_container_set_border_width (GTK_CONTAINER (table), 10);
@@ -310,9 +318,9 @@ GtkWidget *gtk_rig_ctrl_new (GtkSatModule *module)
     gtk_table_attach (GTK_TABLE (table), create_uplink_widgets (GTK_RIG_CTRL (widget)),
                       1, 2, 0, 1, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, 0, 0);
     gtk_table_attach (GTK_TABLE (table), create_target_widgets (GTK_RIG_CTRL (widget)),
-                      0, 1, 1, 2, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, 0, 0);
+                      0, 2, 3, 4, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, 0, 0);
     gtk_table_attach (GTK_TABLE (table), create_conf_widgets (GTK_RIG_CTRL (widget)),
-                      1, 2, 1, 2, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, 0, 0);
+                      0, 2, 1, 2, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, 0, 0);
     gtk_table_attach (GTK_TABLE (table), create_count_down_widgets (GTK_RIG_CTRL (widget)),
                       0, 2, 2, 3, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, 0, 0);
 
@@ -338,13 +346,13 @@ void gtk_rig_ctrl_update   (GtkRigCtrl *ctrl, gdouble t)
     gdouble satfreq;
     gchar *buff;
     
-    if (ctrl->target) {
+    if (ctrl->target->targeting) {
         
         /* update Az/El */
-        buff = g_strdup_printf (AZEL_FMTSTR, ctrl->target->az);
+        buff = g_strdup_printf (AZEL_FMTSTR, ctrl->target->targeting->az);
         gtk_label_set_text (GTK_LABEL (ctrl->SatAz), buff);
         g_free (buff);
-        buff = g_strdup_printf (AZEL_FMTSTR, ctrl->target->el);
+        buff = g_strdup_printf (AZEL_FMTSTR, ctrl->target->targeting->el);
         gtk_label_set_text (GTK_LABEL (ctrl->SatEl), buff);
         g_free (buff);
         
@@ -352,49 +360,49 @@ void gtk_rig_ctrl_update   (GtkRigCtrl *ctrl, gdouble t)
         
         /* update range */
         if (sat_cfg_get_bool (SAT_CFG_BOOL_USE_IMPERIAL)) {
-            buff = g_strdup_printf ("%.0f mi", KM_TO_MI (ctrl->target->range));
+            buff = g_strdup_printf ("%.0f mi", KM_TO_MI (ctrl->target->targeting->range));
         }
         else {
-            buff = g_strdup_printf ("%.0f km", ctrl->target->range);
+            buff = g_strdup_printf ("%.0f km", ctrl->target->targeting->range);
         }
         gtk_label_set_text (GTK_LABEL (ctrl->SatRng), buff);
         g_free (buff);
         
         /* update range rate */
         if (sat_cfg_get_bool (SAT_CFG_BOOL_USE_IMPERIAL)) {
-            buff = g_strdup_printf ("%.3f mi/s", KM_TO_MI (ctrl->target->range_rate));
+            buff = g_strdup_printf ("%.3f mi/s", KM_TO_MI (ctrl->target->targeting->range_rate));
         }
         else {
-            buff = g_strdup_printf ("%.3f km/s", ctrl->target->range_rate);
+            buff = g_strdup_printf ("%.3f km/s", ctrl->target->targeting->range_rate);
         }
         gtk_label_set_text (GTK_LABEL (ctrl->SatRngRate), buff);
         g_free (buff);
         
         /* Doppler shift down */
         satfreq = gtk_freq_knob_get_value (GTK_FREQ_KNOB (ctrl->SatFreqDown));
-        ctrl->dd = -satfreq * (ctrl->target->range_rate / 299792.4580); // Hz
+        ctrl->dd = -satfreq * (ctrl->target->targeting->range_rate / 299792.4580); // Hz
         buff = g_strdup_printf ("%.0f Hz", ctrl->dd);
         gtk_label_set_text (GTK_LABEL (ctrl->SatDopDown), buff);
         g_free (buff);
         
         /* Doppler shift up */
         satfreq = gtk_freq_knob_get_value (GTK_FREQ_KNOB (ctrl->SatFreqUp));
-        ctrl->du = satfreq * (ctrl->target->range_rate / 299792.4580); // Hz
+        ctrl->du = satfreq * (ctrl->target->targeting->range_rate / 299792.4580); // Hz
         buff = g_strdup_printf ("%.0f Hz", ctrl->du);
         gtk_label_set_text (GTK_LABEL (ctrl->SatDopUp), buff);
         g_free (buff);
 
         /* update next pass if necessary */
-        if (ctrl->pass != NULL) {
-            if (ctrl->target->aos > ctrl->pass->aos) {
+        if (ctrl->target->pass != NULL) {
+            if (ctrl->target->targeting->aos > ctrl->target->pass->aos) {
                 /* update pass */
-                free_pass (ctrl->pass);
-                ctrl->pass = get_next_pass (ctrl->target, ctrl->qth, 3.0);
+                free_pass (ctrl->target->pass);
+                ctrl->target->pass = get_next_pass (ctrl->target->targeting, ctrl->qth, 3.0);
             }
         }
         else {
             /* we don't have any current pass; store the current one */
-            ctrl->pass = get_next_pass (ctrl->target, ctrl->qth, 3.0);
+            ctrl->target->pass = get_next_pass (ctrl->target->targeting, ctrl->qth, 3.0);
         }
     }
 }
@@ -535,34 +543,265 @@ static GtkWidget *create_uplink_widgets (GtkRigCtrl *ctrl)
  */
 static GtkWidget *create_target_widgets (GtkRigCtrl *ctrl)
 {
-    GtkWidget *frame,*table,*label,*satsel,*track;
-    GtkWidget *tune,*trsplock,*hbox;
-    gchar *buff;
-    guint i, n;
+    GtkWidget *frame,*table,*satsel, *tree, *high_but, *low_but;
+    GtkTreeViewColumn *sat_nickname, *checkbox, *minCommunication;
+    GtkCellRenderer *rend_sat_nickname, *rend_checkbox, *rend_minCommunication;
+    guint i, num_sats;
     sat_t *sat = NULL;
-    
+    GtkTreeIter iter;
 
-    buff = g_strdup_printf (AZEL_FMTSTR, 0.0);
     
     table = gtk_table_new (4, 4, FALSE);
     gtk_container_set_border_width (GTK_CONTAINER (table), 5);
     gtk_table_set_col_spacings (GTK_TABLE (table), 5);
     gtk_table_set_row_spacings (GTK_TABLE (table), 5);
 
-    /* sat selector */
-    satsel = gtk_combo_box_new_text ();
-    n = g_slist_length (ctrl->sats);
-    for (i = 0; i < n; i++) {
+    ctrl->checkSatsList =  gtk_list_store_new(N_COLUMN, G_TYPE_STRING, G_TYPE_BOOLEAN, G_TYPE_STRING);
+
+    /* set elements to store in the list */
+    num_sats = g_slist_length (ctrl->sats);
+    for (i = 0; i < num_sats; i++) {
         sat = SAT (g_slist_nth_data (ctrl->sats, i));
         if (sat) {
-            gtk_combo_box_append_text (GTK_COMBO_BOX (satsel), sat->nickname);
+            gtk_list_store_append(ctrl->checkSatsList, &iter);
+            gtk_list_store_set(ctrl->checkSatsList, &iter, TEXT_COLUMN, sat->nickname, TOGGLE_COLUMN, FALSE, QNT_COLUMN, "0.000000", -1);
+            ctrl->target->sats[i] = NOT_IN_PRIORITY_QUEUE;
+            ctrl->target->minCommunication[i] = 0.0f;
         }
     }
-    gtk_combo_box_set_active (GTK_COMBO_BOX (satsel), 0);
-    gtk_widget_set_tooltip_text (satsel, _("Select target object"));
-    g_signal_connect (satsel, "changed", G_CALLBACK (sat_selected_cb), ctrl);
-    gtk_table_attach_defaults (GTK_TABLE (table), satsel, 0, 3, 0, 1);
+    tree = gtk_tree_view_new_with_model(GTK_TREE_MODEL(ctrl->checkSatsList));
+
+    /* Create render */
+    rend_sat_nickname = gtk_cell_renderer_text_new();
+    rend_checkbox = gtk_cell_renderer_toggle_new();
+    rend_minCommunication = gtk_cell_renderer_text_new();
+
+    /* Set the column view */
+    sat_nickname = gtk_tree_view_column_new_with_attributes("Target objects", rend_sat_nickname, "text", TEXT_COLUMN, NULL);
+    checkbox = gtk_tree_view_column_new_with_attributes("Selected objects", rend_checkbox, "active", TOGGLE_COLUMN, NULL);
+    minCommunication = gtk_tree_view_column_new_with_attributes("Min Communication Time (s)", rend_minCommunication, "text",  QNT_COLUMN, NULL);
+
+    /* Set properties to the objects */
+    g_object_set(rend_minCommunication, "editable", TRUE, NULL);
+    g_object_set(rend_minCommunication, "xalign", 0.5, NULL); 
+
+    /* Appends the columns */
+    gtk_tree_view_append_column(GTK_TREE_VIEW(tree), sat_nickname);
+    gtk_tree_view_append_column(GTK_TREE_VIEW(tree), checkbox);
+    gtk_tree_view_append_column(GTK_TREE_VIEW(tree), minCommunication);
+
+    /* Sets the viewmode */
+    gtk_tree_view_set_model(GTK_TREE_VIEW(tree), GTK_TREE_MODEL(ctrl->checkSatsList));
+
+    /* Creates a scrolling window */
+    satsel = gtk_scrolled_window_new(NULL, NULL);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(satsel), GTK_POLICY_NEVER, GTK_POLICY_NEVER);
+    gtk_container_add(GTK_CONTAINER(satsel), tree);
+    gtk_table_attach_defaults(GTK_TABLE (table), satsel, 0, 3, 0, 6);
+
+    /* Callback function */
+    g_signal_connect (rend_checkbox, "toggled", G_CALLBACK (sat_selected_cb), ctrl);
+    g_signal_connect (rend_minCommunication, "edited", G_CALLBACK(sat_changed_minCommunication_cb), ctrl);
+ 
+    /*
+     * satellite priority Column
+     */
+    ctrl->prioritySatsList =  gtk_list_store_new(N_COLUMN_PRIORITY, G_TYPE_STRING);
+    ctrl->prioritySats = gtk_tree_view_new_with_model(GTK_TREE_MODEL(ctrl->prioritySatsList));
     
+    /* Create render */
+    rend_sat_nickname = gtk_cell_renderer_text_new();
+    
+    // Set the column view
+    sat_nickname = gtk_tree_view_column_new_with_attributes("Change Priority of Satellite", rend_sat_nickname, "text", TEXT_COLUMN, NULL);
+    
+    // Appends the columns
+    gtk_tree_view_append_column(GTK_TREE_VIEW(ctrl->prioritySats), sat_nickname);
+    
+    // Sets the viewmode
+    gtk_tree_view_set_model(GTK_TREE_VIEW(ctrl->prioritySats), GTK_TREE_MODEL(ctrl->prioritySatsList));
+    
+    // Creates a scrolling window 
+    satsel = gtk_scrolled_window_new(NULL, NULL);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(satsel), GTK_POLICY_NEVER, GTK_POLICY_NEVER); 
+    gtk_container_add(GTK_CONTAINER(satsel), ctrl->prioritySats);
+    gtk_table_attach_defaults(GTK_TABLE (table), satsel, 3, 5, 1, 6);
+    
+    /*
+     * Change Priority Button
+     */
+    // Create UP Button
+    high_but = gpredict_hstock_button (GTK_STOCK_GO_UP, NULL,
+                                     _("Increase the priority of the selected satellite."));
+    // Callback function
+    g_signal_connect (high_but, "clicked", G_CALLBACK (sat_increased_priority_cb), ctrl);
+    gtk_table_attach (GTK_TABLE (table), high_but, 3, 4, 0, 1,
+                      GTK_SHRINK, GTK_SHRINK, 0, 0);
+
+    gtk_table_attach (GTK_TABLE (table), high_but, 3, 4, 0, 1,
+                      GTK_SHRINK, GTK_SHRINK, 0, 0);
+    // Create DOWN Button
+    low_but = gpredict_hstock_button (GTK_STOCK_GO_DOWN, NULL,
+                                     _("Decrease the priority of the selected satellite."));
+    // Callback function
+    g_signal_connect (low_but, "clicked", G_CALLBACK (sat_decreased_priority_cb), ctrl);
+    gtk_table_attach (GTK_TABLE (table), low_but, 4, 5, 0, 1,
+                      GTK_SHRINK, GTK_SHRINK, 0, 0);
+
+   
+    frame = gtk_frame_new (_("Target"));
+
+    gtk_container_add (GTK_CONTAINER (frame), table);
+    
+    return frame;
+}
+
+
+static GtkWidget *create_conf_widgets (GtkRigCtrl *ctrl)
+{
+    GtkWidget *frame,*table,*label,*timer,*track;
+    GtkWidget *tune,*trsplock,*hbox;
+    GDir        *dir = NULL;   /* directory handle */
+    GError      *error = NULL; /* error flag and info */
+    gchar       *dirname;      /* directory name */
+    gchar      **vbuff;
+    const gchar *filename;     /* file name */
+    gchar       *rigname;
+    gchar *buff;
+    
+    
+    buff = g_strdup_printf (AZEL_FMTSTR, 0.0);
+
+
+    table = gtk_table_new (8, 3, FALSE);
+    gtk_container_set_border_width (GTK_CONTAINER (table), 5);
+    gtk_table_set_col_spacings (GTK_TABLE (table), 5);
+    gtk_table_set_row_spacings (GTK_TABLE (table), 5);
+    
+    /* Primary device */
+    label = gtk_label_new (_("1. Device:"));
+    gtk_misc_set_alignment (GTK_MISC (label), 1.0, 0.5);
+    gtk_table_attach_defaults (GTK_TABLE (table), label, 4, 5, 0, 1);
+    
+    ctrl->DevSel = gtk_combo_box_new_text ();
+    gtk_widget_set_tooltip_text (ctrl->DevSel, _("Select primary radio device."\
+                                                 "This device will be used for downlink and uplink "\
+                                                 "unless you select a secondary device for uplink"));
+    
+    /* open configuration directory */
+    dirname = get_hwconf_dir ();
+    
+    dir = g_dir_open (dirname, 0, &error);
+    if (dir) {
+        /* read each .rig file */
+        GSList *rigs=NULL;
+        gint i;
+        gint n;
+        while ((filename = g_dir_read_name (dir))) {
+            
+            if (g_str_has_suffix (filename, ".rig")) {
+                vbuff = g_strsplit (filename, ".rig", 0);
+                rigs=g_slist_insert_sorted(rigs,g_strdup(vbuff[0]),(GCompareFunc)rig_name_compare);
+                g_strfreev (vbuff);
+            }
+        }
+        n = g_slist_length (rigs);
+        for (i = 0; i < n; i++) {
+            rigname = g_slist_nth_data (rigs, i);
+            if (rigname) {
+                gtk_combo_box_append_text (GTK_COMBO_BOX (ctrl->DevSel), rigname);
+                g_free(rigname);
+            }
+        }
+        g_slist_free(rigs);
+    }
+    else {
+        sat_log_log (SAT_LOG_LEVEL_ERROR,
+                     _("%s:%d: Failed to open hwconf dir (%s)"),
+                     __FILE__, __LINE__, error->message);
+        g_clear_error (&error);
+    }
+
+    g_dir_close (dir);
+
+    gtk_combo_box_set_active (GTK_COMBO_BOX (ctrl->DevSel), 0);
+    g_signal_connect (ctrl->DevSel, "changed", G_CALLBACK (primary_rig_selected_cb), ctrl);
+    gtk_table_attach_defaults (GTK_TABLE (table), ctrl->DevSel, 5, 6, 0, 1);
+    /* config will be force-loaded after LO spin is created */
+
+    /* Secondary device */
+    label = gtk_label_new (_("2. Device:"));
+    gtk_misc_set_alignment (GTK_MISC (label), 1.0, 0.5);
+    gtk_table_attach_defaults (GTK_TABLE (table), label, 4, 5, 1, 2);
+    
+    ctrl->DevSel2 = gtk_combo_box_new_text ();
+    gtk_widget_set_tooltip_text (ctrl->DevSel2, _("Select secondary radio device\n"\
+                                                  "This device will be used for uplink"));
+    
+    /* load config */
+    gtk_combo_box_append_text (GTK_COMBO_BOX (ctrl->DevSel2), _("None"));
+    gtk_combo_box_set_active (GTK_COMBO_BOX (ctrl->DevSel2), 0);
+    
+    dir = g_dir_open (dirname, 0, &error);
+    if (dir) {
+        /* read each .rig file */
+        while ((filename = g_dir_read_name (dir))) {
+            
+            if (g_str_has_suffix (filename, ".rig")) {
+                
+                /* only add TX capable rigs */
+                vbuff = g_strsplit (filename, ".rig", 0);
+                if (is_rig_tx_capable (vbuff[0])) {
+                    gtk_combo_box_append_text (GTK_COMBO_BOX (ctrl->DevSel2), vbuff[0]);
+                }
+                g_strfreev (vbuff);
+            }
+        }
+    }
+    else {
+        sat_log_log (SAT_LOG_LEVEL_ERROR,
+                     _("%s:%d: Failed to open hwconf dir (%s)"),
+                     __FILE__, __LINE__, error->message);
+        g_clear_error (&error);
+    }
+
+    g_free (dirname);
+    g_dir_close (dir);
+    
+    
+    //gtk_combo_box_set_active (GTK_COMBO_BOX (ctrl->DevSel), 0);
+    g_signal_connect (ctrl->DevSel2, "changed", G_CALLBACK (secondary_rig_selected_cb), ctrl);
+    gtk_table_attach_defaults (GTK_TABLE (table), ctrl->DevSel2, 5, 6, 1, 2);
+
+    
+    /* Engage button */
+    ctrl->LockBut = gtk_toggle_button_new_with_label (_("Engage"));
+    gtk_widget_set_tooltip_text (ctrl->LockBut, _("Engage the selected radio device"));
+    g_signal_connect (ctrl->LockBut, "toggled", G_CALLBACK (rig_engaged_cb), ctrl);
+    gtk_table_attach_defaults (GTK_TABLE (table), ctrl->LockBut, 6, 7, 0, 1);
+    
+    /* Now, load config*/
+    primary_rig_selected_cb (GTK_COMBO_BOX (ctrl->DevSel), ctrl);
+    
+    /* Timeout */
+    label = gtk_label_new (_("Cycle:"));
+    gtk_misc_set_alignment (GTK_MISC (label), 1.0, 0.5);
+    gtk_table_attach_defaults (GTK_TABLE (table), label, 4, 5, 3, 4);
+    
+    timer = gtk_spin_button_new_with_range (100, 5000, 10);
+    gtk_spin_button_set_digits (GTK_SPIN_BUTTON (timer), 0);
+    gtk_widget_set_tooltip_text (timer,
+                                 _("This parameter controls the delay between "\
+                                   "commands sent to the rig."));
+    gtk_spin_button_set_value (GTK_SPIN_BUTTON (timer), ctrl->delay);
+    g_signal_connect (timer, "value-changed", G_CALLBACK (delay_changed_cb), ctrl);
+    gtk_table_attach (GTK_TABLE (table), timer, 5, 6, 3, 4,
+                      GTK_FILL, GTK_FILL, 0, 0);
+    
+    label = gtk_label_new (_("msec"));
+    gtk_misc_set_alignment (GTK_MISC (label), 0.0, 0.5);
+    gtk_table_attach_defaults (GTK_TABLE (table), label, 6, 7, 3, 4);
+
     /* tracking button */
     track = gtk_toggle_button_new_with_label (_("Track"));
     gtk_widget_set_tooltip_text (track, _("Track the satellite transponder.\n"\
@@ -571,10 +810,20 @@ static GtkWidget *create_target_widgets (GtkRigCtrl *ctrl)
     gtk_table_attach_defaults (GTK_TABLE (table), track, 3, 4, 0, 1);
     g_signal_connect (track, "toggled", G_CALLBACK (track_toggle_cb), ctrl);
     
+    /* Current objcet beeing tracked */
+    label = gtk_label_new (_("Target:"));
+    gtk_misc_set_alignment (GTK_MISC (label), 0.0, 0.5);
+    gtk_table_attach_defaults (GTK_TABLE (table), label, 0, 1, 0, 1);
+
+    ctrl->track_sat = gtk_label_new (_(" --- "));
+    gtk_misc_set_alignment (GTK_MISC (ctrl->track_sat), 0.5, 0.5);
+    gtk_table_attach_defaults (GTK_TABLE (table), ctrl->track_sat, 1, 3, 0, 1);
+    gtk_widget_set_tooltip_text (ctrl->track_sat, 
+                                                _("Current target object"));
+
     /* Transponder selector, tune, and trsplock buttons */
     ctrl->TrspSel = gtk_combo_box_new_text ();
     gtk_widget_set_tooltip_text (ctrl->TrspSel, _("Select a transponder"));
-    load_trsp_list (ctrl);
     //gtk_combo_box_set_active (GTK_COMBO_BOX (ctrl->TrspSel), 0);
     g_signal_connect (ctrl->TrspSel, "changed", G_CALLBACK (trsp_selected_cb), ctrl);
     gtk_table_attach_defaults (GTK_TABLE (table), ctrl->TrspSel, 0, 3, 1, 2);
@@ -654,158 +903,12 @@ static GtkWidget *create_target_widgets (GtkRigCtrl *ctrl)
                                  _("The rate of change for the distance between "
                                    "the satellite and the observer."));
 
-    frame = gtk_frame_new (_("Target"));
 
-    gtk_container_add (GTK_CONTAINER (frame), table);
-    
-    g_free (buff);
-    
-    return frame;
-}
-
-
-static GtkWidget *create_conf_widgets (GtkRigCtrl *ctrl)
-{
-    GtkWidget *frame,*table,*label,*timer;
-    GDir        *dir = NULL;   /* directory handle */
-    GError      *error = NULL; /* error flag and info */
-    gchar       *dirname;      /* directory name */
-    gchar      **vbuff;
-    const gchar *filename;     /* file name */
-    gchar       *rigname;
-    
-    
-    table = gtk_table_new (4, 3, FALSE);
-    gtk_container_set_border_width (GTK_CONTAINER (table), 5);
-    gtk_table_set_col_spacings (GTK_TABLE (table), 5);
-    gtk_table_set_row_spacings (GTK_TABLE (table), 5);
-    
-    /* Primary device */
-    label = gtk_label_new (_("1. Device:"));
-    gtk_misc_set_alignment (GTK_MISC (label), 1.0, 0.5);
-    gtk_table_attach_defaults (GTK_TABLE (table), label, 0, 1, 0, 1);
-    
-    ctrl->DevSel = gtk_combo_box_new_text ();
-    gtk_widget_set_tooltip_text (ctrl->DevSel, _("Select primary radio device."\
-                                                 "This device will be used for downlink and uplink "\
-                                                 "unless you select a secondary device for uplink"));
-    
-    /* open configuration directory */
-    dirname = get_hwconf_dir ();
-    
-    dir = g_dir_open (dirname, 0, &error);
-    if (dir) {
-        /* read each .rig file */
-        GSList *rigs=NULL;
-        gint i;
-        gint n;
-        while ((filename = g_dir_read_name (dir))) {
-            
-            if (g_str_has_suffix (filename, ".rig")) {
-                vbuff = g_strsplit (filename, ".rig", 0);
-                rigs=g_slist_insert_sorted(rigs,g_strdup(vbuff[0]),(GCompareFunc)rig_name_compare);
-                g_strfreev (vbuff);
-            }
-        }
-        n = g_slist_length (rigs);
-        for (i = 0; i < n; i++) {
-            rigname = g_slist_nth_data (rigs, i);
-            if (rigname) {
-                gtk_combo_box_append_text (GTK_COMBO_BOX (ctrl->DevSel), rigname);
-                g_free(rigname);
-            }
-        }
-        g_slist_free(rigs);
-    }
-    else {
-        sat_log_log (SAT_LOG_LEVEL_ERROR,
-                     _("%s:%d: Failed to open hwconf dir (%s)"),
-                     __FILE__, __LINE__, error->message);
-        g_clear_error (&error);
-    }
-
-    g_dir_close (dir);
-
-    gtk_combo_box_set_active (GTK_COMBO_BOX (ctrl->DevSel), 0);
-    g_signal_connect (ctrl->DevSel, "changed", G_CALLBACK (primary_rig_selected_cb), ctrl);
-    gtk_table_attach_defaults (GTK_TABLE (table), ctrl->DevSel, 1, 2, 0, 1);
-    /* config will be force-loaded after LO spin is created */
-
-    /* Secondary device */
-    label = gtk_label_new (_("2. Device:"));
-    gtk_misc_set_alignment (GTK_MISC (label), 1.0, 0.5);
-    gtk_table_attach_defaults (GTK_TABLE (table), label, 0, 1, 1, 2);
-    
-    ctrl->DevSel2 = gtk_combo_box_new_text ();
-    gtk_widget_set_tooltip_text (ctrl->DevSel2, _("Select secondary radio device\n"\
-                                                  "This device will be used for uplink"));
-    
-    /* load config */
-    gtk_combo_box_append_text (GTK_COMBO_BOX (ctrl->DevSel2), _("None"));
-    gtk_combo_box_set_active (GTK_COMBO_BOX (ctrl->DevSel2), 0);
-    
-    dir = g_dir_open (dirname, 0, &error);
-    if (dir) {
-        /* read each .rig file */
-        while ((filename = g_dir_read_name (dir))) {
-            
-            if (g_str_has_suffix (filename, ".rig")) {
-                
-                /* only add TX capable rigs */
-                vbuff = g_strsplit (filename, ".rig", 0);
-                if (is_rig_tx_capable (vbuff[0])) {
-                    gtk_combo_box_append_text (GTK_COMBO_BOX (ctrl->DevSel2), vbuff[0]);
-                }
-                g_strfreev (vbuff);
-            }
-        }
-    }
-    else {
-        sat_log_log (SAT_LOG_LEVEL_ERROR,
-                     _("%s:%d: Failed to open hwconf dir (%s)"),
-                     __FILE__, __LINE__, error->message);
-        g_clear_error (&error);
-    }
-
-    g_free (dirname);
-    g_dir_close (dir);
-    
-    
-    //gtk_combo_box_set_active (GTK_COMBO_BOX (ctrl->DevSel), 0);
-    g_signal_connect (ctrl->DevSel2, "changed", G_CALLBACK (secondary_rig_selected_cb), ctrl);
-    gtk_table_attach_defaults (GTK_TABLE (table), ctrl->DevSel2, 1, 2, 1, 2);
-
-    
-    /* Engage button */
-    ctrl->LockBut = gtk_toggle_button_new_with_label (_("Engage"));
-    gtk_widget_set_tooltip_text (ctrl->LockBut, _("Engage the selected radio device"));
-    g_signal_connect (ctrl->LockBut, "toggled", G_CALLBACK (rig_engaged_cb), ctrl);
-    gtk_table_attach_defaults (GTK_TABLE (table), ctrl->LockBut, 2, 3, 0, 1);
-    
-    /* Now, load config*/
-    primary_rig_selected_cb (GTK_COMBO_BOX (ctrl->DevSel), ctrl);
-    
-    /* Timeout */
-    label = gtk_label_new (_("Cycle:"));
-    gtk_misc_set_alignment (GTK_MISC (label), 1.0, 0.5);
-    gtk_table_attach_defaults (GTK_TABLE (table), label, 0, 1, 3, 4);
-    
-    timer = gtk_spin_button_new_with_range (100, 5000, 10);
-    gtk_spin_button_set_digits (GTK_SPIN_BUTTON (timer), 0);
-    gtk_widget_set_tooltip_text (timer,
-                                 _("This parameter controls the delay between "\
-                                   "commands sent to the rig."));
-    gtk_spin_button_set_value (GTK_SPIN_BUTTON (timer), ctrl->delay);
-    g_signal_connect (timer, "value-changed", G_CALLBACK (delay_changed_cb), ctrl);
-    gtk_table_attach (GTK_TABLE (table), timer, 1, 2, 3, 4,
-                      GTK_FILL, GTK_FILL, 0, 0);
-    
-    label = gtk_label_new (_("msec"));
-    gtk_misc_set_alignment (GTK_MISC (label), 0.0, 0.5);
-    gtk_table_attach_defaults (GTK_TABLE (table), label, 2, 3, 3, 4);
 
     frame = gtk_frame_new (_("Settings"));
     gtk_container_add (GTK_CONTAINER (frame), table);
+
+    g_free (buff);
     
     return frame;
 }
@@ -852,20 +955,61 @@ static void store_sats (gpointer key, gpointer value, gpointer user_data)
  * 
  * This function is called when the user selects a new satellite.
  */
-static void sat_selected_cb (GtkComboBox *satsel, gpointer data)
+static void
+        sat_selected_cb (GtkCellRendererToggle *cell_renderer, gchar *path_str, gpointer data)
 {
     GtkRigCtrl *ctrl = GTK_RIG_CTRL (data);
-    gint i;
+    GtkTreePath *path = gtk_tree_path_new_from_string (path_str);
+    GtkTreeIter iter;
+    gboolean enable;
+    sat_t * sat;
+    gint i, index_priority_list;
     
-    i = gtk_combo_box_get_active (satsel);
+    gtk_tree_model_get_iter (GTK_TREE_MODEL(ctrl->checkSatsList), &iter, path);
+    gtk_tree_model_get (GTK_TREE_MODEL(ctrl->checkSatsList), &iter, TOGGLE_COLUMN, &enable, -1);
+    enable ^= 1;
+
+    gtk_list_store_set(ctrl->checkSatsList, &iter, TOGGLE_COLUMN, enable, -1);
+    sscanf(path_str, " %d ",&i);
+    /* Add sat to priority queue */
+if(enable && i >= 0){
+        /* Show new added satellite in the priority queue */
+        sat = SAT (g_slist_nth_data (ctrl->sats, i));
+        if (sat) {
+            gtk_list_store_append(ctrl->prioritySatsList , &iter);
+            gtk_list_store_set(ctrl->prioritySatsList, &iter, TEXT_COLUMN, sat->nickname, -1);
+            /* Adds the satellite to the priorityQueue */
+            append_elem_priority_queue(ctrl->target, i);
+        } 
+    }
+    else if(!enable && i >= 0){
+        index_priority_list = get_elem_index_priority_queue(ctrl->target, i);
+        remove_elem_priority_queue(ctrl->target, i);
+        // Gets the new iter
+        gtk_tree_path_free (path);
+        path = gtk_tree_path_new_from_indices(index_priority_list ,-1);
+        gtk_tree_model_get_iter (GTK_TREE_MODEL(ctrl->prioritySatsList), &iter, path);
+        // Removes the row
+        gtk_list_store_remove(ctrl->prioritySatsList, &iter);
+    }
+
+    /* Updates the next target*/
+    update_tracked_elem(ctrl);
+
+    if(ctrl->target->targeting != NULL){
+    // ---- 
+    // LIMIT 
+    // ----
+
+   /* i = gtk_combo_box_get_active (satsel);
     if (i >= 0) {
         ctrl->target = SAT (g_slist_nth_data (ctrl->sats, i));
-        
+   */     
         /* update next pass */
-        if (ctrl->pass != NULL)
-            free_pass (ctrl->pass);
-        ctrl->pass = get_next_pass (ctrl->target, ctrl->qth, 3.0);
-        
+   /*     if (ctrl->target->pass != NULL)
+            free_pass (ctrl->target->pass);
+        ctrl->target->pass = get_next_pass (ctrl->target->targeting, ctrl->qth, 3.0);
+     */   
         /* read transponders for new target */
         load_trsp_list (ctrl);
     }
@@ -875,9 +1019,9 @@ static void sat_selected_cb (GtkComboBox *satsel, gpointer data)
                      __FILE__, __FUNCTION__, i);
         
         /* clear pass just in case... */
-        if (ctrl->pass != NULL) {
-            free_pass (ctrl->pass);
-            ctrl->pass = NULL;
+        if (ctrl->target->pass != NULL) {
+            free_pass (ctrl->target->pass);
+            ctrl->target->pass = NULL;
         }
         
     }
@@ -981,7 +1125,111 @@ static void trsp_lock_cb (GtkToggleButton *button, gpointer data)
     }
 }
 
+static void
+        sat_increased_priority_cb(GtkButton *button, gpointer data)
+{
+    GtkRigCtrl *ctrl = GTK_RIG_CTRL (data);
+    GtkTreeSelection *selection;
+    GtkTreeModel     *model = GTK_TREE_MODEL(ctrl->prioritySatsList);
+    GtkTreeIter      *iter1, *iter2, aux;
+    gboolean          haveselection = FALSE; /* this flag is set to TRUE if there is a selection */
+    gint i, j;
 
+    iter1 = malloc (sizeof(GtkTreeIter));
+    iter2 = malloc (sizeof(GtkTreeIter));
+
+    selection = gtk_tree_view_get_selection (GTK_TREE_VIEW(ctrl->prioritySats));
+    haveselection = gtk_tree_selection_get_selected (selection, &model, iter1);
+    gtk_tree_model_get_iter_first(model, iter2);
+
+    if (haveselection && iter1->user_data != iter2->user_data) {
+        while(iter1->user_data != iter2->user_data){
+            aux = *iter2;
+            gtk_tree_model_iter_next (model, iter2);
+        }
+        iter2 = &aux;
+
+        sscanf(gtk_tree_model_get_string_from_iter (model, iter1), "%d", &i);
+        sscanf(gtk_tree_model_get_string_from_iter (model, iter2), "%d", &j);
+
+        gtk_list_store_swap (ctrl->prioritySatsList, iter1, iter2);
+        swap_elem_priority_queue (ctrl->target, i, j);
+        update_tracked_elem (ctrl);
+    }
+}
+
+static void
+        sat_decreased_priority_cb(GtkButton *button, gpointer data)
+{
+    GtkRigCtrl *ctrl = GTK_RIG_CTRL (data);
+    GtkTreeSelection *selection;
+    GtkTreeModel     *model = GTK_TREE_MODEL(ctrl->prioritySatsList);
+    GtkTreeIter      *iter1, *iter2;
+    gboolean          haveselection = FALSE; /* this flag is set to TRUE if there is a selection */
+    gint i, j;
+
+    iter1 = malloc (sizeof(GtkTreeIter));
+    iter2 = malloc (sizeof(GtkTreeIter));
+
+    selection = gtk_tree_view_get_selection (GTK_TREE_VIEW(ctrl->prioritySats));
+    haveselection = gtk_tree_selection_get_selected (selection, &model, iter1);
+    haveselection = gtk_tree_selection_get_selected (selection, &model, iter2);
+
+    if (haveselection) {
+        if(!gtk_tree_model_iter_next (model, iter2)) return;
+
+        sscanf(gtk_tree_model_get_string_from_iter (model, iter1), "%d", &i);
+        sscanf(gtk_tree_model_get_string_from_iter (model, iter2), "%d", &j);
+
+        gtk_list_store_swap (ctrl->prioritySatsList, iter1, iter2);
+        swap_elem_priority_queue(ctrl->target, i, j);
+        update_tracked_elem (ctrl);
+    }
+}
+
+/** \brief Set new minimal time of communication to selected sattelite
+ * \param cellrederertext Pointer to the GtkCellRendererText. 
+ * \param arg1 String of the i-th changed cell
+ * \param arg2 String of the new text entered by the user
+ * \param data Pointer to the GtkRigCtrl widget.
+ * 
+ * This function is called when the user changes the minimal time of communication of a satellite.
+ */
+static void 
+    sat_changed_minCommunication_cb(GtkCellRendererText *cellrenderertext, gchar *arg1, gchar *arg2, gpointer data)
+{
+    GtkRigCtrl *ctrl = GTK_RIG_CTRL (data);
+    GtkTreePath *path = gtk_tree_path_new_from_string (arg1);
+    char *new_num_str;
+    GtkTreeIter iter;
+    float num = 0.0f; 
+    int res = 0, i, strlength = strlen(arg2);
+    
+    /* Transforms a number of the type *,* in a number of the type *.* */
+    for(i=0; i < strlength; i++)
+        if(arg2[i] == ',')
+            arg2[i] = '.';
+    /* Reads the number */
+    res = sscanf(arg2, "%f", &num);
+    new_num_str = malloc(sizeof(char) * strlength);
+    if(num >= 0.0f && res == 1){
+        sprintf(new_num_str, "%f", num);
+    }
+    else{
+        num = 0.0f;
+        sprintf(new_num_str, "%f", num);
+    }
+    /* Sets the new number to the tree model */
+    gtk_tree_model_get_iter (GTK_TREE_MODEL(ctrl->checkSatsList), &iter, path);
+    gtk_list_store_set(ctrl->checkSatsList, &iter, QNT_COLUMN, new_num_str, -1);
+
+    /* Sets the minCommunication to the i-th satellite */
+    sscanf(arg1, "%d", &i);
+    ctrl->target->minCommunication[i] = num;
+
+    /* Resets the next passes if there is a satellite*/
+    update_tracked_elem(ctrl);
+}
 
 
 /** \brief Manage toggle signals (tracking)
@@ -2401,12 +2649,12 @@ static void update_count_down (GtkRigCtrl *ctrl, gdouble t)
 
     
     /* select AOS or LOS time depending on target elevation */
-    if (ctrl->target->el < 0.0) {
-        targettime = ctrl->target->aos;
+    if (ctrl->target->targeting->el < 0.0) {
+        targettime = ctrl->target->targeting->aos;
         aoslos = g_strdup_printf (_("AOS in"));
     }
     else {
-        targettime = ctrl->target->los;
+        targettime = ctrl->target->targeting->los;
         aoslos = g_strdup_printf (_("LOS in"));
     }
     
@@ -2467,7 +2715,7 @@ static void load_trsp_list (GtkRigCtrl *ctrl)
     }
     
     /* check if there is a target satellite */
-    if G_UNLIKELY (ctrl->target == NULL) {
+    if G_UNLIKELY (ctrl->target->targeting == NULL) {
         sat_log_log (SAT_LOG_LEVEL_INFO,
                      _("%s:%s: GtkSatModule has no target satellite."),
                      __FILE__, __FUNCTION__);
@@ -2475,14 +2723,14 @@ static void load_trsp_list (GtkRigCtrl *ctrl)
     }
 
     /* read transponders for new target */
-    ctrl->trsplist = read_transponders (ctrl->target->tle.catnr);
+    ctrl->trsplist = read_transponders (ctrl->target->targeting->tle.catnr);
     
     /* append transponder names to combo box */
     n = g_slist_length (ctrl->trsplist);
     
     sat_log_log (SAT_LOG_LEVEL_DEBUG,
                  _("%s:%s: Satellite %d has %d transponder modes."),
-                 __FILE__, __FUNCTION__, ctrl->target->tle.catnr, n);
+                 __FILE__, __FUNCTION__, ctrl->target->targeting->tle.catnr, n);
     
     if (n == 0)
         return;
@@ -2493,7 +2741,7 @@ static void load_trsp_list (GtkRigCtrl *ctrl)
         
         sat_log_log (SAT_LOG_LEVEL_DEBUG,
                      _("%s:&s: Read transponder '%s' for satellite %d"),
-                     __FILE__, __FUNCTION__, trsp->name, ctrl->target->tle.catnr);
+                     __FILE__, __FUNCTION__, trsp->name, ctrl->target->targeting->tle.catnr);
     }
     
     /* make an initial selection */
@@ -2939,4 +3187,102 @@ static inline gboolean check_get_response (gchar *buffback,gboolean retcode,cons
             retcode=FALSE;
         }
     return retcode;
+}
+
+static void
+        next_elem_to_track(GtkRigCtrl* ctrl)
+{
+    int i, num_sats;
+    gdouble aos_old, los_old, aos, los;
+    gboolean trackable_sat = FALSE;
+    sat_t *sat_old, *sat_new;
+    pass_t *pass;
+    guint dt;
+
+    /* set variables */
+    num_sats = ctrl->target->numSatToTrack;
+
+    if(num_sats <= 0)
+        sat_log_log (SAT_LOG_LEVEL_ERROR,
+                     _("%s:%d: Error tracking new satellite"),
+                     __FILE__, __LINE__);
+
+    /* Gets the first possible satellite of the priority queue */
+    for(i=0; i < num_sats; i++){
+        sat_old = SAT (g_slist_nth_data(ctrl->sats, ctrl->target->priorityQueue[i]));
+        if(sat_old->el > 0.0f) {
+            pass = get_current_pass(sat_old, ctrl->qth, 0.0);
+            aos_old = pass->aos;
+            los_old = pass->los;
+            free_pass(pass);
+        }
+        else {
+            aos_old = sat_old->aos;
+            los_old = sat_old->los;
+        }
+
+        /* convert julian date to seconds */
+        dt = (guint) ((los_old - aos_old) * 86400);
+
+        /* if we have the minimal communication time needded */
+        if(dt > ctrl->target->minCommunication[ctrl->target->priorityQueue[i]]){
+            trackable_sat = TRUE;
+            break;
+        }
+    }
+
+    for(;i < num_sats; i++){
+        /* Gets the next satellite in the priority queue */
+        sat_new = SAT (g_slist_nth_data(ctrl->sats, ctrl->target->priorityQueue[i]));
+        if(sat_new->el > 0.0f) {
+            pass = get_current_pass(sat_new, ctrl->qth, 0.0);
+            aos = pass->aos;
+            los = pass->los;
+            free_pass(pass);
+        }
+        else {
+            aos = sat_new->aos;
+            los = sat_new->los;
+        }
+
+        /* convert julian date to seconds */
+        dt = (guint) ((los - aos) * 86400);
+
+        /* if we have the minimal communication time needded */
+        if(dt > ctrl->target->minCommunication[ctrl->target->priorityQueue[i]]){
+            /* if the new satellite will set before the rise of the old one */
+            if(aos_old > los){
+                sat_old = sat_new;
+                aos_old = aos;
+            }
+        }
+    }
+    if(trackable_sat == TRUE){
+        ctrl->target->targeting = sat_old;
+        if(sat_old->el > 0.0f) 
+            ctrl->target->pass = get_current_pass(sat_old, ctrl->qth, 0.0);
+        else 
+            ctrl->target->pass = get_pass(sat_old, ctrl->qth, 0.0, 3.0f);
+    }
+    else {
+        ctrl->target->targeting = NULL;
+        ctrl->target->pass = NULL;
+    }
+}
+
+static void
+        update_tracked_elem(GtkRigCtrl * ctrl)
+{
+    if(ctrl->target->numSatToTrack > 0){
+        next_elem_to_track(ctrl);
+    }
+    if(ctrl->target->targeting != NULL){
+        gtk_label_set_text((GtkLabel *)ctrl->track_sat, ctrl->target->targeting->nickname); 
+
+        /* read transponders for new target */
+        load_trsp_list (ctrl);
+    }
+    else{
+        gtk_label_set_text((GtkLabel *)ctrl->track_sat, " --- ");
+    }
 }
