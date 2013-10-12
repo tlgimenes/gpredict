@@ -127,5 +127,3 @@ int get_elem_index_priority_queue(TargetSat *target, int i){
     }
     return j;
 }
-
-

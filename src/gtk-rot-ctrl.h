@@ -5,6 +5,7 @@
   Copyright (C)  2001-2009  Alexandru Csete, OZ9AEC.
 
   Authors: Alexandru Csete <oz9aec@gmail.com>
+           Tiago Lobato Gimenes <tlgimenes@gmail.com>
 
   Comments, questions and bugreports should be submitted via
   http://sourceforge.net/projects/gpredict/
@@ -67,6 +68,12 @@ struct _gtk_rot_ctrl
     
     /* Elevation widgets */
     GtkWidget *ElSat,*ElSet,*ElRead,*ElDevSel,*ElDev;
+  
+    /* Target widgets */
+    GtkWidget *prioritySats;        /*!< The Widget of the priority list */
+    GtkListStore *prioritySatsList; /*!< The GTK list of priorities */
+    GtkListStore *checkSatsList;    /*!< List of sats in current module */
+    TargetSat *target;  /*!< Priority list and target satellite */   
     
     /* other widgets */
     GtkWidget *SatCnt;
@@ -79,12 +86,8 @@ struct _gtk_rot_ctrl
     gdouble       t;  /*!< Time when sat data last has been updated. */
     
     /* satellites */
-    GtkWidget *prioritySats;
-    GtkListStore *prioritySatsList;
-    GtkListStore *checkSatsList;    /*!< List of sats in current module */
     GSList *sats;       /*!< List of sats in parent module */
-    // Tiago's modification
-    TargetSat *target;
+
     qth_t  *qth;        /*!< The QTH for this module */
     gboolean flipped;   /*!< Whether the current pass loaded is a flip pass or not */
 

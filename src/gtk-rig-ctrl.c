@@ -5,6 +5,7 @@
   Copyright (C)  2001-2010  Alexandru Csete, OZ9AEC.
 
   Authors: Alexandru Csete <oz9aec@gmail.com>
+           Tiago Lobato Gimenes <tlgimenes@gmail.com>
 
   Comments, questions and bugreports should be submitted via
   http://sourceforge.net/projects/gpredict/
@@ -186,15 +187,9 @@ GType gtk_rig_ctrl_get_type ()
 
 static void gtk_rig_ctrl_class_init (GtkRigCtrlClass *class)
 {
-    //GObjectClass      *gobject_class;
     GtkObjectClass    *object_class;
-    //GtkWidgetClass    *widget_class;
-    //GtkContainerClass *container_class;
-
-    //gobject_class   = G_OBJECT_CLASS (class);
+    
     object_class    = (GtkObjectClass*) class;
-    //widget_class    = (GtkWidgetClass*) class;
-    //container_class = (GtkContainerClass*) class;
 
     parent_class = g_type_class_peek_parent (class);
 
@@ -291,17 +286,10 @@ GtkWidget *gtk_rig_ctrl_new (GtkSatModule *module)
     
     num_sats = g_slist_length (GTK_RIG_CTRL (widget)->sats);
     GTK_RIG_CTRL (widget)->target = new_priority_queue(num_sats);
-    //GTK_RIG_CTRL (widget)->target = SAT (g_slist_nth_data (GTK_RIG_CTRL (widget)->sats, 0));
     
     /* store QTH */
     GTK_RIG_CTRL (widget)->qth = module->qth;
-    
-    /*if (GTK_RIG_CTRL(widget)->target !=NULL) {*/
-        /* get next pass for target satellite */
-/*        GTK_RIG_CTRL (widget)->pass = get_next_pass (GTK_RIG_CTRL (widget)->target,
-                                                     GTK_RIG_CTRL (widget)->qth,
-                                                     3.0);
-    }*/
+   
     /* initialise custom colors */
     gdk_rgb_find_color (gtk_widget_get_colormap (widget), &ColBlack);
     gdk_rgb_find_color (gtk_widget_get_colormap (widget), &ColWhite);
@@ -570,7 +558,11 @@ static GtkWidget *create_target_widgets (GtkRigCtrl *ctrl)
         }
     }
     tree = gtk_tree_view_new_with_model(GTK_TREE_MODEL(ctrl->checkSatsList));
+    gtk_widget_set_usize (tree, -1, 230);
 
+    /*
+     * Sats list
+     */
     /* Create render */
     rend_sat_nickname = gtk_cell_renderer_text_new();
     rend_checkbox = gtk_cell_renderer_toggle_new();
@@ -595,7 +587,7 @@ static GtkWidget *create_target_widgets (GtkRigCtrl *ctrl)
 
     /* Creates a scrolling window */
     satsel = gtk_scrolled_window_new(NULL, NULL);
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(satsel), GTK_POLICY_NEVER, GTK_POLICY_NEVER);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(satsel), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
     gtk_container_add(GTK_CONTAINER(satsel), tree);
     gtk_table_attach_defaults(GTK_TABLE (table), satsel, 0, 3, 0, 6);
 
@@ -623,7 +615,7 @@ static GtkWidget *create_target_widgets (GtkRigCtrl *ctrl)
     
     /* Creates a scrolling window */
     satsel = gtk_scrolled_window_new(NULL, NULL);
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(satsel), GTK_POLICY_NEVER, GTK_POLICY_NEVER); 
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(satsel), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC); 
     gtk_container_add(GTK_CONTAINER(satsel), ctrl->prioritySats);
     gtk_table_attach_defaults(GTK_TABLE (table), satsel, 3, 5, 1, 6);
     

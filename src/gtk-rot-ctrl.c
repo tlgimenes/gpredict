@@ -6,6 +6,7 @@
 
   Authors: Alexandru Csete <oz9aec@gmail.com>
            Charles Suprin  <hamaa1vs@gmail.com>
+           Tiago Lobato Gimenes <tlgimenes@gmail.com>
 
   Comments, questions and bugreports should be submitted via
   http://sourceforge.net/projects/gpredict/
@@ -152,15 +153,9 @@ GType
 static void
         gtk_rot_ctrl_class_init (GtkRotCtrlClass *class)
 {
-    //GObjectClass      *gobject_class;
     GtkObjectClass    *object_class;
-    //GtkWidgetClass    *widget_class;
-    //GtkContainerClass *container_class;
 
-    //gobject_class   = G_OBJECT_CLASS (class);
     object_class    = (GtkObjectClass*) class;
-    //widget_class    = (GtkWidgetClass*) class;
-    //container_class = (GtkContainerClass*) class;
 
     parent_class = g_type_class_peek_parent (class);
 
@@ -294,7 +289,6 @@ void
     
     ctrl->t = t;
     
-    // Tiago's modification
     if (ctrl->target->targeting) {
 
         /* update target displays */
@@ -490,6 +484,7 @@ static
         }
     }
     tree = gtk_tree_view_new_with_model(GTK_TREE_MODEL(ctrl->checkSatsList));
+    gtk_widget_set_usize (tree, -1, 230);
     
     /* Create render */
     rend_sat_nickname = gtk_cell_renderer_text_new();
@@ -515,7 +510,7 @@ static
 
     /* Creates a scrolling window */
     satsel = gtk_scrolled_window_new(NULL, NULL);
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(satsel), GTK_POLICY_NEVER, GTK_POLICY_NEVER);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(satsel), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
     gtk_container_add(GTK_CONTAINER(satsel), tree);
     gtk_table_attach_defaults(GTK_TABLE (table), satsel, 0, 3, 0, 6);
     
@@ -543,7 +538,7 @@ static
     
     /* Creates a scrolling window */
     satsel = gtk_scrolled_window_new(NULL, NULL);
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(satsel), GTK_POLICY_NEVER, GTK_POLICY_NEVER); 
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(satsel), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC); 
     gtk_container_add(GTK_CONTAINER(satsel), ctrl->prioritySats);
     gtk_table_attach_defaults(GTK_TABLE (table), satsel, 3, 5, 1, 6);
     
@@ -820,11 +815,11 @@ static void
     else if(!enable && i >= 0){
         index_priority_list = get_elem_index_priority_queue(ctrl->target, i);
         remove_elem_priority_queue(ctrl->target, i);
-        // Gets the new iter
+        /* Gets the new iter for the priority list*/
         gtk_tree_path_free (path);
         path = gtk_tree_path_new_from_indices(index_priority_list ,-1);
         gtk_tree_model_get_iter (GTK_TREE_MODEL(ctrl->prioritySatsList), &iter, path);
-        // Removes the row
+        /* Removes the row */
         gtk_list_store_remove(ctrl->prioritySatsList, &iter);
     }
 

@@ -5,6 +5,7 @@
   Copyright (C)  2001-2009  Alexandru Csete, OZ9AEC.
 
   Authors: Alexandru Csete <oz9aec@gmail.com>
+           Tiago Lobato Gimenes <tlgimenes@gmail.com>
 
   Comments, questions and bugreports should be submitted via
   http://sourceforge.net/projects/gpredict/
@@ -74,14 +75,15 @@ struct _gtk_rig_ctrl
     GtkWidget *LoDown;      /*!< LO of downconverter */
     GtkWidget *LoUp;        /*!z LO of upconverter */
     
-    /* target status labels*/
+    /* target status labels and widgets*/
     GtkWidget *SatAz,*SatEl,*SatCnt;
     GtkWidget *SatRng,*SatRngRate,*SatDop;
     GtkWidget *track_sat;
     GtkWidget *prioritySats;
     GtkListStore *prioritySatsList;
     GtkListStore *checkSatsList;
-    
+    TargetSat *target;  /*!< Priority list and target satellite */   
+
     /* other widgets */
     GtkWidget *TrspSel;  /*!< Transponder selector */
     GtkWidget *DevSel;   /*!< Device selector */
@@ -95,9 +97,6 @@ struct _gtk_rig_ctrl
     gboolean      trsplock;  /*!< Flag indicating whether uplink and downlink are lockled */
     
     GSList *sats;       /*!< List of sats in parent module */
-    TargetSat *target;
- //   sat_t  *target;     /*!< Target satellite */
- //   pass_t *pass;       /*!< Next pass of target satellite */
     qth_t  *qth;        /*!< The QTH for this module */
     
     guint delay;       /*!< Timeout delay. */
