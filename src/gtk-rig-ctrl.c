@@ -599,7 +599,7 @@ static GtkWidget *create_target_widgets (GtkRigCtrl *ctrl)
     gtk_container_add(GTK_CONTAINER(satsel), tree);
     gtk_table_attach_defaults(GTK_TABLE (table), satsel, 0, 3, 0, 6);
 
-    /* Callback function */
+    /* Callback functions for the minimun communication and the checkbox */
     g_signal_connect (rend_checkbox, "toggled", G_CALLBACK (sat_selected_cb), ctrl);
     g_signal_connect (rend_minCommunication, "edited", G_CALLBACK(sat_changed_minCommunication_cb), ctrl);
  
@@ -612,16 +612,16 @@ static GtkWidget *create_target_widgets (GtkRigCtrl *ctrl)
     /* Create render */
     rend_sat_nickname = gtk_cell_renderer_text_new();
     
-    // Set the column view
+    /* Set the column view */
     sat_nickname = gtk_tree_view_column_new_with_attributes("Change Priority of Satellite", rend_sat_nickname, "text", TEXT_COLUMN, NULL);
     
-    // Appends the columns
+    /* Appends the columns */
     gtk_tree_view_append_column(GTK_TREE_VIEW(ctrl->prioritySats), sat_nickname);
     
-    // Sets the viewmode
+    /* Sets the viewmode */
     gtk_tree_view_set_model(GTK_TREE_VIEW(ctrl->prioritySats), GTK_TREE_MODEL(ctrl->prioritySatsList));
     
-    // Creates a scrolling window 
+    /* Creates a scrolling window */
     satsel = gtk_scrolled_window_new(NULL, NULL);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(satsel), GTK_POLICY_NEVER, GTK_POLICY_NEVER); 
     gtk_container_add(GTK_CONTAINER(satsel), ctrl->prioritySats);
@@ -630,20 +630,20 @@ static GtkWidget *create_target_widgets (GtkRigCtrl *ctrl)
     /*
      * Change Priority Button
      */
-    // Create UP Button
+    /* Create UP Button */
     high_but = gpredict_hstock_button (GTK_STOCK_GO_UP, NULL,
                                      _("Increase the priority of the selected satellite."));
-    // Callback function
+    /* Callback function of UP Button */
     g_signal_connect (high_but, "clicked", G_CALLBACK (sat_increased_priority_cb), ctrl);
     gtk_table_attach (GTK_TABLE (table), high_but, 3, 4, 0, 1,
                       GTK_SHRINK, GTK_SHRINK, 0, 0);
 
     gtk_table_attach (GTK_TABLE (table), high_but, 3, 4, 0, 1,
                       GTK_SHRINK, GTK_SHRINK, 0, 0);
-    // Create DOWN Button
+    /* Create DOWN Button */
     low_but = gpredict_hstock_button (GTK_STOCK_GO_DOWN, NULL,
                                      _("Decrease the priority of the selected satellite."));
-    // Callback function
+    /* Callback function of DOWN Button */
     g_signal_connect (low_but, "clicked", G_CALLBACK (sat_decreased_priority_cb), ctrl);
     gtk_table_attach (GTK_TABLE (table), low_but, 4, 5, 0, 1,
                       GTK_SHRINK, GTK_SHRINK, 0, 0);
@@ -816,7 +816,7 @@ static GtkWidget *create_conf_widgets (GtkRigCtrl *ctrl)
     gtk_table_attach_defaults (GTK_TABLE (table), label, 0, 1, 0, 1);
 
     ctrl->track_sat = gtk_label_new (_(" --- "));
-    gtk_misc_set_alignment (GTK_MISC (ctrl->track_sat), 0.5, 0.5);
+    gtk_misc_set_alignment (GTK_MISC (ctrl->track_sat), 0.0, 0.5);
     gtk_table_attach_defaults (GTK_TABLE (table), ctrl->track_sat, 1, 3, 0, 1);
     gtk_widget_set_tooltip_text (ctrl->track_sat, 
                                                 _("Current target object"));
@@ -950,7 +950,8 @@ static void store_sats (gpointer key, gpointer value, gpointer user_data)
 
 
 /** \brief Manage satellite selections
- * \param satsel Pointer to the GtkComboBox.
+ * \param cell_render Pointer to the GtkCellRendererToggle.
+ * \param path_str Pointer to the path in the tree of Gtk
  * \param data Pointer to the GtkRigCtrl widget.
  * 
  * This function is called when the user selects a new satellite.
@@ -965,14 +966,15 @@ static void
     sat_t * sat;
     gint i, index_priority_list;
     
+    /* Change box from checked to unchecked and vice versa*/
     gtk_tree_model_get_iter (GTK_TREE_MODEL(ctrl->checkSatsList), &iter, path);
     gtk_tree_model_get (GTK_TREE_MODEL(ctrl->checkSatsList), &iter, TOGGLE_COLUMN, &enable, -1);
     enable ^= 1;
-
     gtk_list_store_set(ctrl->checkSatsList, &iter, TOGGLE_COLUMN, enable, -1);
+
     sscanf(path_str, " %d ",&i);
     /* Add sat to priority queue */
-if(enable && i >= 0){
+    if(enable && i >= 0){
         /* Show new added satellite in the priority queue */
         sat = SAT (g_slist_nth_data (ctrl->sats, i));
         if (sat) {
@@ -985,11 +987,11 @@ if(enable && i >= 0){
     else if(!enable && i >= 0){
         index_priority_list = get_elem_index_priority_queue(ctrl->target, i);
         remove_elem_priority_queue(ctrl->target, i);
-        // Gets the new iter
+        /* Gets the new iter of the priority list*/
         gtk_tree_path_free (path);
         path = gtk_tree_path_new_from_indices(index_priority_list ,-1);
         gtk_tree_model_get_iter (GTK_TREE_MODEL(ctrl->prioritySatsList), &iter, path);
-        // Removes the row
+        /* Removes the row */
         gtk_list_store_remove(ctrl->prioritySatsList, &iter);
     }
 
@@ -997,33 +999,8 @@ if(enable && i >= 0){
     update_tracked_elem(ctrl);
 
     if(ctrl->target->targeting != NULL){
-    // ---- 
-    // LIMIT 
-    // ----
-
-   /* i = gtk_combo_box_get_active (satsel);
-    if (i >= 0) {
-        ctrl->target = SAT (g_slist_nth_data (ctrl->sats, i));
-   */     
-        /* update next pass */
-   /*     if (ctrl->target->pass != NULL)
-            free_pass (ctrl->target->pass);
-        ctrl->target->pass = get_next_pass (ctrl->target->targeting, ctrl->qth, 3.0);
-     */   
         /* read transponders for new target */
         load_trsp_list (ctrl);
-    }
-    else {
-        sat_log_log (SAT_LOG_LEVEL_ERROR,
-                     _("%s:%s: Invalid satellite selection: %d"),
-                     __FILE__, __FUNCTION__, i);
-        
-        /* clear pass just in case... */
-        if (ctrl->target->pass != NULL) {
-            free_pass (ctrl->target->pass);
-            ctrl->target->pass = NULL;
-        }
-        
     }
 }
 
@@ -1125,6 +1102,12 @@ static void trsp_lock_cb (GtkToggleButton *button, gpointer data)
     }
 }
 
+/** \brief Handle Increase Priority Button in the Priority List.
+ *  \param button Pointer to the GtkButton that received the signal.
+ *  \param data Pointer to the GtkRigCtrl structure.
+ *
+ * This function is called when the user presses the "Increase Priority" button.
+ */
 static void
         sat_increased_priority_cb(GtkButton *button, gpointer data)
 {
@@ -1158,6 +1141,12 @@ static void
     }
 }
 
+/** \brief Handle Decrease Priority Button in the Priority List.
+ *  \param button Pointer to the GtkButton that received the signal.
+ *  \param data Pointer to the GtkRigCtrl structure.
+ *
+ * This function is called when the user presses the "Decrease Priority" button.
+ */
 static void
         sat_decreased_priority_cb(GtkButton *button, gpointer data)
 {
@@ -1625,6 +1614,8 @@ static gboolean rig_ctrl_timeout_cb (gpointer data)
 
     }
     
+    /* Update the tracking object */
+    update_tracked_elem(ctrl);
     
     if (g_static_mutex_trylock(&(ctrl->busy))==FALSE) {
         sat_log_log (SAT_LOG_LEVEL_ERROR,_("%s missed the deadline"),__FUNCTION__);
@@ -3189,6 +3180,16 @@ static inline gboolean check_get_response (gchar *buffback,gboolean retcode,cons
     return retcode;
 }
 
+/** \brief Chooses the Next Element to be Tracked
+ *  \param ctrl Pointer to GtkRigCtrl
+ *
+ *  This function chooses the next satellite to be tracked according to
+ *  the order of the satellites in the priority list. If the LOS - AOS 
+ *  of a satellite is smaller than the minimum communication time of that 
+ *  satellite, this one is not choosen. 
+ *
+ *  TODO : Implementation that takes in account minimum elevation
+ */
 static void
         next_elem_to_track(GtkRigCtrl* ctrl)
 {
@@ -3270,6 +3271,14 @@ static void
     }
 }
 
+/** \brief Updates the Next Element to be Tracked
+ *  \param ctrl Pointer to GtkRigCtrl
+ *
+ *  This function updates the fields:
+ *  * ctrl->target->targeting
+ *  * ctrl->target->pass
+ *  setting the new satellite to target
+ */
 static void
         update_tracked_elem(GtkRigCtrl * ctrl)
 {

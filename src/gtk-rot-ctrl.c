@@ -478,7 +478,7 @@ static
      */
     ctrl->checkSatsList =  gtk_list_store_new(N_COLUMN, G_TYPE_STRING, G_TYPE_BOOLEAN, G_TYPE_STRING);
     
-    // set elements to store in the list
+    /* set elements to store in the list */
     num_sats = g_slist_length (ctrl->sats);
     for (i = 0; i < num_sats; i++) {
         sat = SAT (g_slist_nth_data (ctrl->sats, i));
@@ -491,35 +491,35 @@ static
     }
     tree = gtk_tree_view_new_with_model(GTK_TREE_MODEL(ctrl->checkSatsList));
     
-    // Create render
+    /* Create render */
     rend_sat_nickname = gtk_cell_renderer_text_new();
     rend_checkbox = gtk_cell_renderer_toggle_new();
     rend_minCommunication = gtk_cell_renderer_text_new();
     
-    // Set the column view
+    /* Set the column view */
     sat_nickname = gtk_tree_view_column_new_with_attributes("Target objects", rend_sat_nickname, "text", TEXT_COLUMN, NULL);
     checkbox = gtk_tree_view_column_new_with_attributes("Selected objects", rend_checkbox, "active", TOGGLE_COLUMN, NULL);
     minCommunication = gtk_tree_view_column_new_with_attributes("Min Communication Time (s)", rend_minCommunication, "text",  QNT_COLUMN, NULL);
     
-    // Set properties to the objects
+    /* Set properties to the objects */
     g_object_set(rend_minCommunication, "editable", TRUE, NULL);
     g_object_set(rend_minCommunication, "xalign", 0.5, NULL); 
 
-    // Appends the columns
+    /* Appends the columns */
     gtk_tree_view_append_column(GTK_TREE_VIEW(tree), sat_nickname);
     gtk_tree_view_append_column(GTK_TREE_VIEW(tree), checkbox);
     gtk_tree_view_append_column(GTK_TREE_VIEW(tree), minCommunication);
 
-    // Sets the viewmode
+    /* Sets the viewmode */
     gtk_tree_view_set_model(GTK_TREE_VIEW(tree), GTK_TREE_MODEL(ctrl->checkSatsList));
 
-    // Creates a scrolling window 
+    /* Creates a scrolling window */
     satsel = gtk_scrolled_window_new(NULL, NULL);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(satsel), GTK_POLICY_NEVER, GTK_POLICY_NEVER);
     gtk_container_add(GTK_CONTAINER(satsel), tree);
     gtk_table_attach_defaults(GTK_TABLE (table), satsel, 0, 3, 0, 6);
     
-    // Callback function
+    /* Callback functions for the minimun communication and the checkbox */
     g_signal_connect (rend_checkbox, "toggled", G_CALLBACK (sat_selected_cb), ctrl);
     g_signal_connect (rend_minCommunication, "edited", G_CALLBACK(sat_changed_minCommunication_cb), ctrl);
 
@@ -528,20 +528,20 @@ static
      */
     ctrl->prioritySatsList =  gtk_list_store_new(N_COLUMN_PRIORITY, G_TYPE_STRING);
     ctrl->prioritySats = gtk_tree_view_new_with_model(GTK_TREE_MODEL(ctrl->prioritySatsList));
-    
-    // Create render
+     
+    /* Create render */
     rend_sat_nickname = gtk_cell_renderer_text_new();
     
-    // Set the column view
+    /* Set the column view */
     sat_nickname = gtk_tree_view_column_new_with_attributes("Change Priority of Satellite", rend_sat_nickname, "text", TEXT_COLUMN, NULL);
     
-    // Appends the columns
+    /* Appends the columns */
     gtk_tree_view_append_column(GTK_TREE_VIEW(ctrl->prioritySats), sat_nickname);
     
-    // Sets the viewmode
+    /* Sets the viewmode */
     gtk_tree_view_set_model(GTK_TREE_VIEW(ctrl->prioritySats), GTK_TREE_MODEL(ctrl->prioritySatsList));
     
-    // Creates a scrolling window 
+    /* Creates a scrolling window */
     satsel = gtk_scrolled_window_new(NULL, NULL);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(satsel), GTK_POLICY_NEVER, GTK_POLICY_NEVER); 
     gtk_container_add(GTK_CONTAINER(satsel), ctrl->prioritySats);
@@ -550,20 +550,20 @@ static
     /*
      * Change Priority Button
      */
-    // Create UP Button
+    /* Create UP Button */
     high_but = gpredict_hstock_button (GTK_STOCK_GO_UP, NULL,
                                      _("Increase the priority of the selected satellite."));
-    // Callback function
+    /* Callback function of UP Button*/
     g_signal_connect (high_but, "clicked", G_CALLBACK (sat_increased_priority_cb), ctrl);
     gtk_table_attach (GTK_TABLE (table), high_but, 3, 4, 0, 1,
                       GTK_SHRINK, GTK_SHRINK, 0, 0);
 
     gtk_table_attach (GTK_TABLE (table), high_but, 3, 4, 0, 1,
                       GTK_SHRINK, GTK_SHRINK, 0, 0);
-    // Create DOWN Button
+    /* Create DOWN Button */
     low_but = gpredict_hstock_button (GTK_STOCK_GO_DOWN, NULL,
                                      _("Decrease the priority of the selected satellite."));
-    // Callback function
+    /* Callback function of DOWN Button*/
     g_signal_connect (low_but, "clicked", G_CALLBACK (sat_decreased_priority_cb), ctrl);
     gtk_table_attach (GTK_TABLE (table), low_but, 4, 5, 0, 1,
                       GTK_SHRINK, GTK_SHRINK, 0, 0);
@@ -831,28 +831,17 @@ static void
     /* Updates the next target*/
     update_tracked_elem(ctrl);
 
- /*   if(ctrl->target->targeting != NULL){
-         update next pass 
-        if (ctrl->target->targeting != NULL)
-            free_pass (ctrl->target->pass);
-
-        if (ctrl->target->targeting->el > 0.0)
-            ctrl->target->pass = get_current_pass (ctrl->target->targeting, ctrl->qth, ctrl->t);
-        else
-            ctrl->target->pass = get_pass (ctrl->target->targeting, ctrl->qth, ctrl->t, 3.0);
-
-        set_flipped_pass(ctrl);
-
-        if(ctrl->plot != NULL){
-             Plots a new pass only if there is a new element added 
-            gtk_polar_plot_set_pass (GTK_POLAR_PLOT (ctrl->plot), ctrl->target->pass);
-        }
-    }*/
-
     /* Frees the path */
     gtk_tree_path_free (path);
 }
 
+
+/** \brief Handle Increase Priority Button in the Priority List.
+ *  \param button Pointer to the GtkButton that received the signal.
+ *  \param data Pointer to the GtkRotCtrl structure.
+ *
+ * This function is called when the user presses the "Increase Priority" button.
+ */
 static void
         sat_increased_priority_cb(GtkButton *button, gpointer data)
 {
@@ -886,6 +875,12 @@ static void
     }
 }
 
+/** \brief Handle Decrease Priority Button in the Priority List.
+ *  \param button Pointer to the GtkButton that received the signal.
+ *  \param data Pointer to the GtkRotCtrl structure.
+ *
+ * This function is called when the user presses the "Decrease Priority" button.
+ */
 static void
         sat_decreased_priority_cb(GtkButton *button, gpointer data)
 {
@@ -1756,8 +1751,18 @@ static inline void set_flipped_pass (GtkRotCtrl* ctrl){
 
 }
 
-    static void
-next_elem_to_track(GtkRotCtrl* ctrl)
+/** \brief Chooses the Next Element to be Tracked
+ *  \param ctrl Pointer to GtkRotCtrl
+ *
+ *  This function chooses the next satellite to be tracked according to
+ *  the order of the satellites in the priority list. If the LOS - AOS 
+ *  of a satellite is smaller than the minimum communication time of that 
+ *  satellite, this one is not choosen. 
+ *
+ *  TODO : Implementation that takes in account minimum elevation
+ */
+static void
+        next_elem_to_track(GtkRotCtrl* ctrl)
 {
     int i, num_sats;
     gdouble aos_old, los_old, aos, los;
@@ -1838,17 +1843,24 @@ next_elem_to_track(GtkRotCtrl* ctrl)
     }
 }
 
-    static void
-update_tracked_elem(GtkRotCtrl * ctrl)
+/** \brief Updates the Next Element to be Tracked
+ *  \param ctrl Pointer to GtkRotCtrl
+ *
+ *  This function updates the fields:
+ *  * ctrl->target->targeting
+ *  * ctrl->target->pass
+ *  setting the new satellite to target
+ */
+static void
+        update_tracked_elem(GtkRotCtrl * ctrl)
 {
     if(ctrl->target->numSatToTrack > 0){
         next_elem_to_track(ctrl);
- 
     }
     if(ctrl->target->targeting != NULL){
         gtk_label_set_text((GtkLabel*)ctrl->track_sat, ctrl->target->targeting->nickname); 
         
-        if(ctrl->plot != NULL){
+       if(ctrl->plot != NULL){
             /* Plots a new pass only if there is a new element added */
             gtk_polar_plot_set_pass (GTK_POLAR_PLOT (ctrl->plot), ctrl->target->pass);
         }
