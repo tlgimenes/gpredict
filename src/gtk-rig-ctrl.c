@@ -43,6 +43,7 @@
 #include <gdk/gdkkeysyms.h>
 #include <glib/gi18n.h>
 #include <math.h>
+#include <float.h>
 #include <glib.h>
 #include "compat.h"
 #include "sat-log.h"
@@ -558,7 +559,7 @@ static GtkWidget *create_target_widgets (GtkRigCtrl *ctrl)
         }
     }
     tree = gtk_tree_view_new_with_model(GTK_TREE_MODEL(ctrl->checkSatsList));
-    gtk_widget_set_usize (tree, -1, 230);
+    gtk_widget_set_usize (tree, 470, 230);
 
     /*
      * Sats list
@@ -587,7 +588,7 @@ static GtkWidget *create_target_widgets (GtkRigCtrl *ctrl)
 
     /* Creates a scrolling window */
     satsel = gtk_scrolled_window_new(NULL, NULL);
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(satsel), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(satsel), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
     gtk_container_add(GTK_CONTAINER(satsel), tree);
     gtk_table_attach_defaults(GTK_TABLE (table), satsel, 0, 3, 0, 6);
 
@@ -600,12 +601,13 @@ static GtkWidget *create_target_widgets (GtkRigCtrl *ctrl)
      */
     ctrl->prioritySatsList =  gtk_list_store_new(N_COLUMN_PRIORITY, G_TYPE_STRING);
     ctrl->prioritySats = gtk_tree_view_new_with_model(GTK_TREE_MODEL(ctrl->prioritySatsList));
+    gtk_widget_set_usize (ctrl->prioritySats, 150, -1);
     
     /* Create render */
     rend_sat_nickname = gtk_cell_renderer_text_new();
     
     /* Set the column view */
-    sat_nickname = gtk_tree_view_column_new_with_attributes("Change Priority of Satellite", rend_sat_nickname, "text", TEXT_COLUMN, NULL);
+    sat_nickname = gtk_tree_view_column_new_with_attributes("Satellite Priority", rend_sat_nickname, "text", TEXT_COLUMN, NULL);
     
     /* Appends the columns */
     gtk_tree_view_append_column(GTK_TREE_VIEW(ctrl->prioritySats), sat_nickname);
@@ -615,7 +617,7 @@ static GtkWidget *create_target_widgets (GtkRigCtrl *ctrl)
     
     /* Creates a scrolling window */
     satsel = gtk_scrolled_window_new(NULL, NULL);
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(satsel), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC); 
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(satsel), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC); 
     gtk_container_add(GTK_CONTAINER(satsel), ctrl->prioritySats);
     gtk_table_attach_defaults(GTK_TABLE (table), satsel, 3, 5, 1, 6);
     
@@ -630,8 +632,6 @@ static GtkWidget *create_target_widgets (GtkRigCtrl *ctrl)
     gtk_table_attach (GTK_TABLE (table), high_but, 3, 4, 0, 1,
                       GTK_SHRINK, GTK_SHRINK, 0, 0);
 
-    gtk_table_attach (GTK_TABLE (table), high_but, 3, 4, 0, 1,
-                      GTK_SHRINK, GTK_SHRINK, 0, 0);
     /* Create DOWN Button */
     low_but = gpredict_hstock_button (GTK_STOCK_GO_DOWN, NULL,
                                      _("Decrease the priority of the selected satellite."));
@@ -3187,7 +3187,7 @@ static void
 {
     int i, num_sats;
     gdouble aos_old, los_old, aos, los;
-    gboolean trackable_sat = FALSE;
+    gboolean trackable_sat = FALSE, passing;
     sat_t *sat_old, *sat_new;
     pass_t *pass;
     guint dt;
@@ -3203,7 +3203,7 @@ static void
     /* Gets the first possible satellite of the priority queue */
     for(i=0; i < num_sats; i++){
         sat_old = SAT (g_slist_nth_data(ctrl->sats, ctrl->target->priorityQueue[i]));
-        if(sat_old->el > 0.0f) {
+        if(sat_old->el > 0.0f && sat_old->aos > 0) {
             pass = get_current_pass(sat_old, ctrl->qth, 0.0);
             aos_old = pass->aos;
             los_old = pass->los;
@@ -3218,8 +3218,9 @@ static void
         dt = (guint) ((los_old - aos_old) * 86400);
 
         /* if we have the minimal communication time needded */
-        if(dt > ctrl->target->minCommunication[ctrl->target->priorityQueue[i]]){
+        if(dt > ctrl->target->minCommunication[ctrl->target->priorityQueue[i]] || (aos_old < FLT_MIN && sat_old->el > 0.0f)){
             trackable_sat = TRUE;
+            i++;
             break;
         }
     }
@@ -3227,7 +3228,9 @@ static void
     for(;i < num_sats; i++){
         /* Gets the next satellite in the priority queue */
         sat_new = SAT (g_slist_nth_data(ctrl->sats, ctrl->target->priorityQueue[i]));
-        if(sat_new->el > 0.0f) {
+        passing = FALSE;
+        if(sat_new->el > 0.0f && sat_new->aos > 0) {
+            passing = TRUE;
             pass = get_current_pass(sat_new, ctrl->qth, 0.0);
             aos = pass->aos;
             los = pass->los;
@@ -3242,9 +3245,9 @@ static void
         dt = (guint) ((los - aos) * 86400);
 
         /* if we have the minimal communication time needded */
-        if(dt > ctrl->target->minCommunication[ctrl->target->priorityQueue[i]]){
+        if(dt > ctrl->target->minCommunication[ctrl->target->priorityQueue[i]] || (aos < FLT_MIN && sat_new->el > 0.0f)){
             /* if the new satellite will set before the rise of the old one */
-            if(aos_old > los){
+            if((aos_old > los && sat_old->el < FLT_MIN) || (passing && aos_old < FLT_MIN)){
                 sat_old = sat_new;
                 aos_old = aos;
             }
