@@ -39,6 +39,7 @@
 extern "C" {
 #endif /* __cplusplus */
 
+#define SATS_FILE "/tmp/GpredictSATS"
 
 #define GTK_TYPE_SAT_LIST          (gtk_sat_list_get_type ())
 #define GTK_SAT_LIST(obj)          G_TYPE_CHECK_INSTANCE_CAST (obj,\

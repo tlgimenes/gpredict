@@ -31,6 +31,12 @@
  */
 #include <gtk/gtk.h>
 #include <glib/gi18n.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <string.h>
+#include <stdio.h>
 #include "sgpsdp/sgp4sdp4.h"
 #include "gtk-sat-list.h"
 #include "sat-log.h"
@@ -287,6 +293,8 @@ GtkWidget *gtk_sat_list_new(GKeyFile * cfgdata, GHashTable * sats, qth_t * qth, 
     GtkCellRenderer *renderer;
     GtkTreeViewColumn *column;
 
+    /* Clears the file of list of satellites */
+    fclose(fopen(SATS_FILE, "w+"));
 
     widget = g_object_new(GTK_TYPE_SAT_LIST, NULL);
 
@@ -468,6 +476,22 @@ static GtkTreeModel *create_and_fill_model(GHashTable * sats)
     return GTK_TREE_MODEL(liststore);
 }
 
+void sat_list_to_file(sat_t * sat)
+{
+    FILE * sats_file = fopen(SATS_FILE, "a+");
+
+    if(sats_file == NULL) {
+        sat_log_log(SAT_LOG_LEVEL_WARN, _("%s: SATS file problems!"), __FUNCTION__);
+        perror(" ");
+    }
+ 
+    if(fprintf(sats_file, "%s\n", sat->nickname) < 0) {
+        sat_log_log(SAT_LOG_LEVEL_WARN, _("%s: SATS file problems!"), __FUNCTION__);
+        perror(" ");
+    }
+
+    fclose(sats_file);
+}
 
 static void sat_list_add_satellites(gpointer key, gpointer value, gpointer user_data)
 {
@@ -476,6 +500,9 @@ static void sat_list_add_satellites(gpointer key, gpointer value, gpointer user_
     sat_t *sat = SAT(value);
 
     (void)key;                  /* avoid unusued parameter compiler warning */
+
+    // Saves each satellite in the SATS_FILE
+    sat_list_to_file(sat);
 
     gtk_list_store_append(store, &item);
     gtk_list_store_set(store, &item,

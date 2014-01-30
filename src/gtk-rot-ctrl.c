@@ -289,7 +289,7 @@ void
     gchar *buff;
     
     ctrl->t = t;
-    
+
     if (ctrl->target->targeting) {
 
         /* update target displays */

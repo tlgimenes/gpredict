@@ -45,6 +45,10 @@
 #include <math.h>
 #include <float.h>
 #include <glib.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <stdio.h>
 #include "compat.h"
 #include "sat-log.h"
 #include "predict-tools.h"
@@ -227,6 +231,10 @@ static void gtk_rig_ctrl_destroy (GtkObject *object)
 {
     GtkRigCtrl *ctrl = GTK_RIG_CTRL (object);
 
+    /* Closes FIFO file */
+    if(ctrl->fifo_fd > -1)
+        close(ctrl->fifo_fd);
+
     /* stop timer */
     if (ctrl->timerid > 0) 
         g_source_remove (ctrl->timerid);
@@ -257,6 +265,7 @@ static void gtk_rig_ctrl_destroy (GtkObject *object)
     if (ctrl->sock2)
         close_rigctld_socket(&(ctrl->sock2));
     (* GTK_OBJECT_CLASS (parent_class)->destroy) (object);
+
 }
 
 
@@ -319,7 +328,52 @@ GtkWidget *gtk_rig_ctrl_new (GtkSatModule *module)
                                                     rig_ctrl_timeout_cb,
                                                     GTK_RIG_CTRL (widget));
     
+    GTK_RIG_CTRL (widget)->fifo_fd = open(FIFO_FILE, O_NONBLOCK | O_RDWR);
+    if(GTK_RIG_CTRL (widget)->fifo_fd == -1){
+        sat_log_log(SAT_LOG_LEVEL_WARN, _("%s: FIFO file problems!"), __FUNCTION__);
+        perror(" ");
+    }
+
     return widget;
+}
+
+void targeting_to_fifo(GtkRigCtrl *ctrl)
+{
+    sat_t * sat = ctrl->target->targeting;
+    int fifo_fd = ctrl->fifo_fd;
+    int str_size;
+    char * sat_info, str_aux;
+    int count;
+
+    if(sat != NULL){
+        /*
+        str_size = 30;
+        sat_aux = malloc(str_size);
+
+        sprintf(sat_aux, "%.2f\n%.2f\n", sat->aos, sat->los);
+        str_size = strlen(sat_info) + strlen(sat->nickname) + 1;
+
+        for(count=0; str_size != 0; count++) {
+            str_size /= 10;
+        }
+        str_size = strlen(sat_info) + count + 1;
+        sat_info = malloc(sizeof(char)*str_size);
+
+        free(sat_info);
+        sat_info = malloc(sizeof(char) * str_size);
+        sprintf(sat_info, "%d\n%s\n%.2f\n%.2f\n",str_size, sat->nickname, sat->aos, sat->los);*/
+
+        str_size = strlen(sat->nickname) + 1;
+        sat_info = malloc(sizeof(char)*str_size);
+        sprintf(sat_info, "%s\n", sat->nickname);
+
+        if(write(fifo_fd, sat_info, str_size) == -1) {
+            sat_log_log(SAT_LOG_LEVEL_WARN, _("%s: FIFO file write problems!"), __FUNCTION__);
+            perror(" ");
+        }
+
+        free(sat_info);
+    }
 }
 
 
@@ -334,9 +388,10 @@ void gtk_rig_ctrl_update   (GtkRigCtrl *ctrl, gdouble t)
 {
     gdouble satfreq;
     gchar *buff;
-    
+
     if (ctrl->target->targeting) {
-        
+
+
         /* update Az/El */
         buff = g_strdup_printf (AZEL_FMTSTR, ctrl->target->targeting->az);
         gtk_label_set_text (GTK_LABEL (ctrl->SatAz), buff);
@@ -393,6 +448,7 @@ void gtk_rig_ctrl_update   (GtkRigCtrl *ctrl, gdouble t)
             /* we don't have any current pass; store the current one */
             ctrl->target->pass = get_next_pass (ctrl->target->targeting, ctrl->qth, 3.0);
         }
+        
     }
 }
 
@@ -1608,6 +1664,9 @@ static gboolean rig_ctrl_timeout_cb (gpointer data)
     
     /* Update the tracking object */
     update_tracked_elem(ctrl);
+
+    /* Sends new tracked element to FIFO file */
+    targeting_to_fifo(ctrl);
     
     if (g_static_mutex_trylock(&(ctrl->busy))==FALSE) {
         sat_log_log (SAT_LOG_LEVEL_ERROR,_("%s missed the deadline"),__FUNCTION__);
