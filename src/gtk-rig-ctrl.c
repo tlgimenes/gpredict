@@ -337,42 +337,65 @@ GtkWidget *gtk_rig_ctrl_new (GtkSatModule *module)
     return widget;
 }
 
+/** \brief Print to FIFO file.
+ * \param str       Pointer to the string that will be printed
+ * \param fifo_fd   File descriptor of the FIFO file
+ * 
+ * This function is used to print a string in the FIFO pipe
+ * formated in the folowwing manner :
+ *
+ * # string'\n'
+ *
+ * where # is the number of chars in the string with him inclused
+ * string is the passed str parameter
+ * '\n' is the '\n' character.
+ */
+
+void print_to_fifo(char * str, int fifo_fd)
+{
+    char *output;
+    int count;
+    int str_size = strlen(str);
+    int str_size_mem = str_size + 3; /*extra space for ' ', '\n' and '\0' characters*/ 
+
+
+    for(count=0; str_size != 0; count++) {
+        str_size /= 10;
+    }
+    str_size_mem += count;     
+    output = malloc(sizeof(char) * str_size_mem);
+
+    sprintf(output, "%d %s\n", str_size_mem, str);
+
+    if(write(fifo_fd, output, str_size_mem) == -1) {
+        sat_log_log(SAT_LOG_LEVEL_WARN, _("%s: FIFO file write problems!"), __FUNCTION__);
+        perror(" ");
+    }
+
+    free(output);
+}
+
+/** \brief Targeting satellite to FIFO.
+ * \param ctrl Pointer to the GtkRigCtrl.
+ * 
+ * This function used to print informations about
+ * the current targeting satellite to a FIFO file
+ * in the format defined by print_to_fifo function.
+ */
 void targeting_to_fifo(GtkRigCtrl *ctrl)
 {
     sat_t * sat = ctrl->target->targeting;
+    char sat_el[50], sat_az[50];
     int fifo_fd = ctrl->fifo_fd;
-    int str_size;
-    char * sat_info, str_aux;
-    int count;
 
     if(sat != NULL){
-        /*
-        str_size = 30;
-        sat_aux = malloc(str_size);
+        print_to_fifo(sat->nickname, fifo_fd);  // Print Sat Name to FIFO 
 
-        sprintf(sat_aux, "%.2f\n%.2f\n", sat->aos, sat->los);
-        str_size = strlen(sat_info) + strlen(sat->nickname) + 1;
+        sprintf(sat_el, "%.2f", sat->el); // Print Sat elevation to FIFO 
+        print_to_fifo(sat_el, fifo_fd);
 
-        for(count=0; str_size != 0; count++) {
-            str_size /= 10;
-        }
-        str_size = strlen(sat_info) + count + 1;
-        sat_info = malloc(sizeof(char)*str_size);
-
-        free(sat_info);
-        sat_info = malloc(sizeof(char) * str_size);
-        sprintf(sat_info, "%d\n%s\n%.2f\n%.2f\n",str_size, sat->nickname, sat->aos, sat->los);*/
-
-        str_size = strlen(sat->nickname) + 1;
-        sat_info = malloc(sizeof(char)*str_size);
-        sprintf(sat_info, "%s\n", sat->nickname);
-
-        if(write(fifo_fd, sat_info, str_size) == -1) {
-            sat_log_log(SAT_LOG_LEVEL_WARN, _("%s: FIFO file write problems!"), __FUNCTION__);
-            perror(" ");
-        }
-
-        free(sat_info);
+        sprintf(sat_az, "%.2f", sat->az); // Print Sat azimuth to FIFO 
+        print_to_fifo(sat_az, fifo_fd);
     }
 }
 
