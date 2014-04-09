@@ -914,62 +914,63 @@ static void create_track(GtkPolarPlot * pv)
     guint32         col;
     guint           tres, ttidx;
 
-    root = goo_canvas_get_root_item_model(GOO_CANVAS(pv->canvas));
-
     /* create points */
     num = g_slist_length(pv->pass->details);
+    if(num > 0) {
 
-    /* time resolution for time ticks; we need
-       3 additional points to AOS and LOS ticks.
-     */
-    tres = (num - 2) / (TRACK_TICK_NUM - 1);
+    root = goo_canvas_get_root_item_model(GOO_CANVAS(pv->canvas));
 
-    points = goo_canvas_points_new(num);
+        /* time resolution for time ticks; we need
+           3 additional points to AOS and LOS ticks.
+           */
+        tres = (num - 2) / (TRACK_TICK_NUM - 1);
 
-    /* first point should be (aos_az,0.0) */
-    azel_to_xy(pv, pv->pass->aos_az, 0.0, &x, &y);
-    points->coords[0] = (double)x;
-    points->coords[1] = (double)y;
-    pv->trtick[0] = create_time_tick(pv, pv->pass->aos, x, y);
+        points = goo_canvas_points_new(num);
 
-    ttidx = 1;
+        /* first point should be (aos_az,0.0) */
+        azel_to_xy(pv, pv->pass->aos_az, 0.0, &x, &y);
+        points->coords[0] = (double)x;
+        points->coords[1] = (double)y;
+        pv->trtick[0] = create_time_tick(pv, pv->pass->aos, x, y);
 
-    for (i = 1; i < num - 1; i++)
-    {
-        detail = PASS_DETAIL(g_slist_nth_data(pv->pass->details, i));
-        if (detail->el >= 0.0)
-            azel_to_xy(pv, detail->az, detail->el, &x, &y);
-        points->coords[2 * i] = (double)x;
-        points->coords[2 * i + 1] = (double)y;
+        ttidx = 1;
 
-        if (!(i % tres))
+        for (i = 1; i < num - 1; i++)
         {
-            if (ttidx < TRACK_TICK_NUM)
-                /* create a time tick */
-                pv->trtick[ttidx] = create_time_tick(pv, detail->time, x, y);
-            ttidx++;
+            detail = PASS_DETAIL(g_slist_nth_data(pv->pass->details, i));
+            if (detail->el >= 0.0)
+                azel_to_xy(pv, detail->az, detail->el, &x, &y);
+            points->coords[2 * i] = (double)x;
+            points->coords[2 * i + 1] = (double)y;
+
+            if (!(i % tres))
+            {
+                if (ttidx < TRACK_TICK_NUM)
+                    /* create a time tick */
+                    pv->trtick[ttidx] = create_time_tick(pv, detail->time, x, y);
+                ttidx++;
+            }
         }
+
+        /* last point should be (los_az, 0.0)  */
+        azel_to_xy(pv, pv->pass->los_az, 0.0, &x, &y);
+        points->coords[2 * (num - 1)] = (double)x;
+        points->coords[2 * (num - 1) + 1] = (double)y;
+
+        /* create poly-line */
+        col = sat_cfg_get_int(SAT_CFG_INT_POLAR_TRACK_COL);
+
+        pv->track = goo_canvas_polyline_model_new(root, FALSE, 0,
+                "points", points,
+                "line-width", 1.0,
+                "stroke-color-rgba", col,
+                "line-cap",
+                CAIRO_LINE_CAP_SQUARE,
+                "line-join",
+                CAIRO_LINE_JOIN_MITER, NULL);
+        goo_canvas_points_unref(points);
+
     }
-
-    /* last point should be (los_az, 0.0)  */
-    azel_to_xy(pv, pv->pass->los_az, 0.0, &x, &y);
-    points->coords[2 * (num - 1)] = (double)x;
-    points->coords[2 * (num - 1) + 1] = (double)y;
-
-    /* create poly-line */
-    col = sat_cfg_get_int(SAT_CFG_INT_POLAR_TRACK_COL);
-
-    pv->track = goo_canvas_polyline_model_new(root, FALSE, 0,
-                                              "points", points,
-                                              "line-width", 1.0,
-                                              "stroke-color-rgba", col,
-                                              "line-cap",
-                                              CAIRO_LINE_CAP_SQUARE,
-                                              "line-join",
-                                              CAIRO_LINE_JOIN_MITER, NULL);
-    goo_canvas_points_unref(points);
-
-
 }
 
 

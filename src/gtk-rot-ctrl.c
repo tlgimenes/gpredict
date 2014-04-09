@@ -62,6 +62,8 @@
 #include <netinet/in.h>     /* struct sockaddr_in */
 #include <arpa/inet.h>      /* htons() */
 #include <netdb.h>          /* gethostbyname() */
+#include <sys/stat.h>
+#include <fcntl.h>
 #else
 #include <winsock2.h>
 #endif
@@ -95,6 +97,7 @@ static void rot_selected_cb (GtkComboBox *box, gpointer data);
 static void rot_locked_cb (GtkToggleButton *button, gpointer data);
 static gboolean rot_ctrl_timeout_cb (gpointer data);
 static void update_count_down (GtkRotCtrl *ctrl, gdouble t);
+static void targeting_to_fifo(GtkRotCtrl *ctrl);
 
 static gboolean get_pos (GtkRotCtrl *ctrl, gdouble *az, gdouble *el);
 static gboolean set_pos (GtkRotCtrl *ctrl, gdouble az, gdouble el);
@@ -161,7 +164,6 @@ static void
     parent_class = g_type_class_peek_parent (class);
 
     object_class->destroy = gtk_rot_ctrl_destroy;
-
 }
 
 
@@ -209,6 +211,9 @@ static void
     }
 
     (* GTK_OBJECT_CLASS (parent_class)->destroy) (object);
+
+    /* Destroy FIFO file */
+    unlink(FIFO_FILE);
 }
 
 
@@ -272,9 +277,41 @@ GtkWidget *
                                                     rot_ctrl_timeout_cb,
                                                     GTK_ROT_CTRL (widget));
     
+    /*  Creates FIFO file */
+    if(mkfifo(FIFO_FILE, S_IRWXU) == -1){
+        sat_log_log(SAT_LOG_LEVEL_WARN, _("%s: FIFO file creating problems!"), __FUNCTION__);
+        perror(" ");
+    }
+
     return widget;
 }
 
+/* Write SatName, elevation and azimuth 
+ * to the FIFO file 
+ */
+void targeting_to_fifo(GtkRotCtrl *ctrl)
+{
+    sat_t *sat = ctrl->target->targeting;
+    char sat_info[MAX_STR_FIFO_SIZE];
+    int fifo_fd;
+
+    fifo_fd = open(FIFO_FILE, O_RDWR | O_NONBLOCK);
+    if(sat != NULL && fifo_fd > -1){
+        sprintf(sat_info, "%s\n%.2f\n%.2f\n", sat->nickname, sat->el, sat->az);
+
+        if(write(fifo_fd, sat_info, strlen(sat_info)) == -1) {
+            sat_log_log(SAT_LOG_LEVEL_WARN, _("%s: FIFO file write problems!"), __FUNCTION__);
+            perror(" ");
+        }
+    }
+    else if(fifo_fd > -1){
+        close(fifo_fd);
+    }
+    else {
+        sat_log_log(SAT_LOG_LEVEL_WARN, _("%s: FIFO file problems!"), __FUNCTION__);
+        perror(" ");
+    }
+}
 
 /** \brief Update rotator control state.
  * \param ctrl Pointer to the GtkRotCtrl.
@@ -1338,6 +1375,9 @@ static gboolean
         }
     }
     g_static_mutex_unlock(&(ctrl->busy));
+
+    /* Sends new tracked element to FIFO file */
+    targeting_to_fifo(ctrl);
 
     return TRUE;
 }

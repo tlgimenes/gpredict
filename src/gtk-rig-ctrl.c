@@ -74,11 +74,9 @@
 /* END */
 #include "gtk-rig-ctrl.h"
 
-
 #define AZEL_FMTSTR "%7.2f\302\260"
 #define MAX_ERROR_COUNT 5
 #define WR_DEL 5000 /* delay in usec to wait between write and read commands */
-
 
 static void gtk_rig_ctrl_class_init (GtkRigCtrlClass *class);
 static void gtk_rig_ctrl_init       (GtkRigCtrl      *list);
@@ -231,10 +229,6 @@ static void gtk_rig_ctrl_destroy (GtkObject *object)
 {
     GtkRigCtrl *ctrl = GTK_RIG_CTRL (object);
 
-    /* Closes FIFO file */
-    if(ctrl->fifo_fd > -1)
-        close(ctrl->fifo_fd);
-
     /* stop timer */
     if (ctrl->timerid > 0) 
         g_source_remove (ctrl->timerid);
@@ -265,7 +259,6 @@ static void gtk_rig_ctrl_destroy (GtkObject *object)
     if (ctrl->sock2)
         close_rigctld_socket(&(ctrl->sock2));
     (* GTK_OBJECT_CLASS (parent_class)->destroy) (object);
-
 }
 
 
@@ -328,77 +321,8 @@ GtkWidget *gtk_rig_ctrl_new (GtkSatModule *module)
                                                     rig_ctrl_timeout_cb,
                                                     GTK_RIG_CTRL (widget));
     
-    GTK_RIG_CTRL (widget)->fifo_fd = open(FIFO_FILE, O_NONBLOCK | O_RDWR);
-    if(GTK_RIG_CTRL (widget)->fifo_fd == -1){
-        sat_log_log(SAT_LOG_LEVEL_WARN, _("%s: FIFO file problems!"), __FUNCTION__);
-        perror(" ");
-    }
-
     return widget;
 }
-
-/** \brief Print to FIFO file.
- * \param str       Pointer to the string that will be printed
- * \param fifo_fd   File descriptor of the FIFO file
- * 
- * This function is used to print a string in the FIFO pipe
- * formated in the folowwing manner :
- *
- * # string'\n'
- *
- * where # is the number of chars in the string with him inclused
- * string is the passed str parameter
- * '\n' is the '\n' character.
- */
-
-void print_to_fifo(char * str, int fifo_fd)
-{
-    char *output;
-    int count;
-    int str_size = strlen(str);
-    int str_size_mem = str_size + 3; /*extra space for ' ', '\n' and '\0' characters*/ 
-
-
-    for(count=0; str_size != 0; count++) {
-        str_size /= 10;
-    }
-    str_size_mem += count;     
-    output = malloc(sizeof(char) * str_size_mem);
-
-    sprintf(output, "%d %s\n", str_size_mem, str);
-
-    if(write(fifo_fd, output, str_size_mem) == -1) {
-        sat_log_log(SAT_LOG_LEVEL_WARN, _("%s: FIFO file write problems!"), __FUNCTION__);
-        perror(" ");
-    }
-
-    free(output);
-}
-
-/** \brief Targeting satellite to FIFO.
- * \param ctrl Pointer to the GtkRigCtrl.
- * 
- * This function used to print informations about
- * the current targeting satellite to a FIFO file
- * in the format defined by print_to_fifo function.
- */
-void targeting_to_fifo(GtkRigCtrl *ctrl)
-{
-    sat_t * sat = ctrl->target->targeting;
-    char sat_el[50], sat_az[50];
-    int fifo_fd = ctrl->fifo_fd;
-
-    if(sat != NULL){
-        print_to_fifo(sat->nickname, fifo_fd);  // Print Sat Name to FIFO 
-
-        sprintf(sat_el, "%.2f", sat->el); // Print Sat elevation to FIFO 
-        print_to_fifo(sat_el, fifo_fd);
-
-        sprintf(sat_az, "%.2f", sat->az); // Print Sat azimuth to FIFO 
-        print_to_fifo(sat_az, fifo_fd);
-    }
-}
-
 
 /** \brief Update rig control state.
  * \param ctrl Pointer to the GtkRigCtrl.
@@ -1688,9 +1612,6 @@ static gboolean rig_ctrl_timeout_cb (gpointer data)
     /* Update the tracking object */
     update_tracked_elem(ctrl);
 
-    /* Sends new tracked element to FIFO file */
-    targeting_to_fifo(ctrl);
-    
     if (g_static_mutex_trylock(&(ctrl->busy))==FALSE) {
         sat_log_log (SAT_LOG_LEVEL_ERROR,_("%s missed the deadline"),__FUNCTION__);
         return TRUE;

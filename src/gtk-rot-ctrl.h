@@ -41,7 +41,8 @@
 extern "C" {
 #endif /* __cplusplus */
 
-
+#define MAX_STR_FIFO_SIZE 999
+#define FIFO_FILE "/tmp/GpredictFIFO"
 
 
 #define GTK_TYPE_ROT_CTRL          (gtk_rot_ctrl_get_type ())

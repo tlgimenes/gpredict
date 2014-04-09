@@ -42,8 +42,6 @@
 extern "C" {
 #endif /* __cplusplus */
 
-#define FIFO_FILE "/tmp/GpredictFIFO"
-
 #define GTK_TYPE_RIG_CTRL          (gtk_rig_ctrl_get_type ())
 #define GTK_RIG_CTRL(obj)          G_TYPE_CHECK_INSTANCE_CAST (obj,\
                                    gtk_rig_ctrl_get_type (),\
@@ -82,7 +80,6 @@ struct _gtk_rig_ctrl
     GtkListStore *prioritySatsList;
     GtkListStore *checkSatsList;
     TargetSat    *target;   /*!< Priority list and target satellite */  
-    int          fifo_fd;  /*!< File descriptor of the fifo file */
 
     /* other widgets */
     GtkWidget *TrspSel;  /*!< Transponder selector */
