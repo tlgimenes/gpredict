@@ -293,9 +293,8 @@ void targeting_to_fifo(GtkRotCtrl *ctrl)
 {
     sat_t *sat = ctrl->target->targeting;
     char sat_info[MAX_STR_FIFO_SIZE];
-    int fifo_fd;
+    int fifo_fd  = open(FIFO_FILE, O_RDWR | O_NONBLOCK);
 
-    fifo_fd = open(FIFO_FILE, O_RDWR | O_NONBLOCK);
     if(sat != NULL && fifo_fd > -1){
         sprintf(sat_info, "%s\n%.2f\n%.2f\n", sat->nickname, sat->el, sat->az);
 
@@ -304,13 +303,12 @@ void targeting_to_fifo(GtkRotCtrl *ctrl)
             perror(" ");
         }
     }
-    else if(fifo_fd > -1){
-        close(fifo_fd);
-    }
     else {
-        sat_log_log(SAT_LOG_LEVEL_WARN, _("%s: FIFO file problems!"), __FUNCTION__);
+        sat_log_log(SAT_LOG_LEVEL_WARN, _("%s: FIFO file openning/writing problems!"), __FUNCTION__);
         perror(" ");
     }
+
+    close(fifo_fd);
 }
 
 /** \brief Update rotator control state.
